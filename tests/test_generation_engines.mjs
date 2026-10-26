@@ -46,9 +46,9 @@ const layoutBoxes = [
     { x: 0, y: 0, width: 1, height: 0.5, type: 'object', desc: 'Sunset sky' },
     { x: 0.25, y: 0.4, width: 0.5, height: 0.6, type: 'character', desc: 'A girl with fennec ears' },
     { x: 0.1, y: 0.05, width: 0.8, height: 0.1, type: 'text', desc: 'Bold title', text: 'MANGA' }];
-// Every text-to-image engine receives the MOSS-Image layout prompt through its own text encoder.
+// MOSS-Image, Anima and Qwen receive the MOSS-Image layout prompt through their own text encoder; Krea2 gets its JSON layout below.
 for (const [engine, encoder, input, empty] of [['moss', 'CLIPTextEncode', 'text', 'EmptyFlux2LatentImage'], ['anima', 'CLIPTextEncode', 'text', 'EmptyLatentImage'],
-    ['krea', 'CLIPTextEncode', 'text', 'EmptyImage'], ['qwen', 'TextEncodeQwenImage21', 'prompt', 'EmptyImage']]) {
+    ['qwen', 'TextEncodeQwenImage21', 'prompt', 'EmptyImage']]) {
     const cfg = inheritModels({ ...initialSettings(engine), prompt: 'A rooftop at dusk.', aspect_ratio: '1000:1500', megapixels: 1 }, settings.models[engine], engine);
     for (const [key, node, field] of [['model', 'UNETLoader', 'unet_name'], ['encoder', 'CLIPLoader', 'clip_name'], ['vae', 'VAELoader', 'vae_name']]) {
         if (!options(defs, node, field).includes(cfg[key])) cfg[key] = options(defs, node, field)[0];
@@ -68,6 +68,21 @@ for (const [engine, encoder, input, empty] of [['moss', 'CLIPTextEncode', 'text'
         jobs.push({ engine, op: 'bbox', count: 0, ...built });
     }
 }
+const kreaCfg = inheritModels({ ...initialSettings('krea'), prompt: 'A rooftop at dusk.', prompt_sections: { environment: 'Neon city at night.' }, aspect_ratio: '1000:1500', megapixels: 1 }, settings.models.krea, 'krea');
+for (const [key, node, field] of [['model', 'UNETLoader', 'unet_name'], ['encoder', 'CLIPLoader', 'clip_name'], ['vae', 'VAELoader', 'vae_name']]) {
+    if (!options(defs, node, field).includes(kreaCfg[key])) kreaCfg[key] = options(defs, node, field)[0];
+}
+const kreaBuilt = buildPrompt(defs, 'bbox', 'krea', { ...kreaCfg, boxes: [...layoutBoxes, { x: 0.5, y: 0.5, width: 0.1, height: 0.1, type: 'object', desc: ' ' }] }, [], 'bbox');
+const kreaNodes = Object.values(kreaBuilt.graph), kreaSize = kreaNodes.find(n => n.class_type === 'EmptyImage').inputs;
+assert(!kreaNodes.some(n => ['CreateBoundingBoxes', 'MOSSImageLayoutPrompt'].includes(n.class_type)), 'Krea2 needs no MOSS layout nodes');
+const kreaLayout = JSON.parse(kreaNodes.find(n => n.class_type === 'CLIPTextEncode').inputs.text);
+assert(kreaSize.width < kreaSize.height); assert.equal(kreaLayout.aspect_ratio.split(':').map(Number).reduce((w, h) => w / h), kreaSize.width / kreaSize.height);
+assert.equal(kreaLayout.high_level_description, 'A rooftop at dusk.');
+assert.deepEqual(kreaLayout.compositional_deconstruction, { background: 'Neon city at night.', elements: [
+    { type: 'obj', bbox: [0, 0, 1000, 500], desc: 'Sunset sky, positioned in the upper-center area, occupying a large area' },
+    { type: 'obj', bbox: [250, 400, 750, 1000], desc: 'A girl with fennec ears, positioned in the lower-center area, occupying a large area' },
+    { type: 'text', bbox: [100, 50, 900, 150], text: 'MANGA', desc: 'Bold title, positioned in the upper-center area, occupying a small area' }] }, 'Boxes without a description are skipped');
+jobs.push({ engine: 'krea', op: 'bbox', count: 0, ...kreaBuilt });
 const mossCfg = inheritModels({ ...initialSettings('moss'), aspect_ratio: '1000:1500', megapixels: 1, boxes: layoutBoxes }, settings.models.moss, 'moss');
 const mossGraph = Object.values(buildPrompt(defs, 'bbox', 'moss', mossCfg, [], 'bbox').graph);
 const [sky, character, text] = mossGraph.find(n => n.class_type === 'CreateBoundingBoxes').inputs.editor_state.__value__;

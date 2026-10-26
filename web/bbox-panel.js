@@ -74,12 +74,14 @@ export function bboxControls(studio, kind, send, dimensions, changed, linked, mo
         } }, ...engines.map(([value, text]) => el('option', { value, text })));
         engine.value = state.engine;
         const presets = el('div', { class: 'mm-row' }); studio.presets(presets, scope, cfg, {}, () => { changed(); render(); });
-        const missing = ['CreateBoundingBoxes', 'MOSSImageLayoutPrompt'].filter(type => !studio.defs[type]);
+        const missing = state.engine === 'krea' ? [] : ['CreateBoundingBoxes', 'MOSSImageLayoutPrompt'].filter(type => !studio.defs[type]);
         const prompt = el('details', { open: true }, el('summary', { text: 'Scene prompt' })); studio.promptControls(prompt, cfg, update);
         const alpha = el('div'); studio.alphaControls(alpha, cfg, state.engine, update);
         const sampling = el('div'); studio.samplingControls(sampling, cfg, state.engine, update, scope); sampling.append(seed('Seed', cfg, update));
         element.append(field('Engine', engine), presets, ...missing.length ? [el('small', { text: `Missing ${missing.join(' and ')}. Update ComfyUI, then refresh lists.` })] : [],
-            el('small', { text: 'Generates the whole canvas from the scene prompt and the boxes, written in the MOSS-Image layout format. MOSS-Image is trained on it; other engines receive it as prompt text. Put background boxes first and foreground boxes last; the drawing itself is not sent to the model.' }),
+            el('small', { text: state.engine === 'krea'
+                ? 'Generates the whole canvas from the scene prompt and the boxes, written as Krea2 BBOX Prompter JSON. The Environment section becomes its background, and boxes without a description are skipped. The drawing itself is not sent to the model.'
+                : 'Generates the whole canvas from the scene prompt and the boxes, written in the MOSS-Image layout format. MOSS-Image is trained on it; other engines receive it as prompt text. Put background boxes first and foreground boxes last; the drawing itself is not sent to the model.' }),
             toggle('Draw boxes on canvas', drawing), el('small', { text: 'Drag a corner to resize a box and its edge or label to move it. While drawing boxes, Ctrl+Z and Ctrl+Y undo and redo box changes.' }), list,
             el('div', { class: 'mm-row' }, button('Clear boxes', () => edit(() => { state.boxes = []; })), undoButton, redoButton), prompt,
             alpha, slider('Working resolution · MP', el('input', { type: 'number', 'aria-label': 'Working resolution · MP', value: cfg.megapixels, step: 0.1, onchange: e => { cfg.megapixels = Number(e.target.value); update(); } }), [0.25, 4]),

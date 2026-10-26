@@ -168,6 +168,31 @@ export const initialSettings = (engine) => ({
         negative: engine === 'anima' ? 'score_6, score_5, score_4, worst quality, low quality, text, censored, deformed, bad hand, blurry, (watermark),' : '' } : {}),
 });
 
+// Matches the Export node of github.com/ukr8b3g-cmyk/Krea2-BBOX-Prompter with its defaults: [x1, y1, x2, y2] per mille,
+// a position hint on every desc, and boxes without a description or text skipped.
+export function krea2Layout(scene, background, boxes, size) {
+    const gcd = (a, b) => b ? gcd(b, a % b) : a, divisor = gcd(size.width, size.height);
+    const elements = boxes.flatMap(box => {
+        const x1 = Math.round(Math.max(0, box.x) * size.width), y1 = Math.round(Math.max(0, box.y) * size.height);
+        const x2 = Math.round(Math.min(1, box.x + box.width) * size.width), y2 = Math.round(Math.min(1, box.y + box.height) * size.height);
+        if (x1 >= x2 || y1 >= y2) return [];
+        const cx = (x1 + x2) / 2 / size.width, cy = (y1 + y2) / 2 / size.height, area = (x2 - x1) * (y2 - y1) / (size.width * size.height);
+        const column = cx < 0.34 ? 'left' : cx > 0.66 ? 'right' : 'center', row = cy < 0.34 ? 'upper' : cy > 0.66 ? 'lower' : 'middle';
+        const place = column === 'center' ? (row === 'middle' ? 'center' : `${row}-center`) : row === 'middle' ? `middle-${column}` : `${row}-${column}`;
+        const extent = area >= 0.55 ? 'dominant' : area >= 0.25 ? 'large' : area >= 0.10 ? 'medium-sized' : 'small';
+        const hint = `positioned in the ${place} area, occupying a ${extent} area`;
+        const bbox = [x1 / size.width, y1 / size.height, x2 / size.width, y2 / size.height].map(value => Math.round(value * 1000));
+        const desc = box.desc?.trim() || '';
+        if (box.type === 'text') {
+            const text = box.text?.trim() || '';
+            return text ? [{ type: 'text', bbox, text, desc: `${desc || 'readable text with black outline'}, ${hint}` }] : [];
+        }
+        return desc ? [{ type: 'obj', bbox, desc: `${desc}, ${hint}` }] : [];
+    });
+    return JSON.stringify({ aspect_ratio: `${size.width / divisor}:${size.height / divisor}`, high_level_description: scene,
+        compositional_deconstruction: { background, elements } });
+}
+
 export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) {
     if (engine === 'krea_edit' && !imagePaths.length) throw new Error('Krea2 editing requires at least one reference image.');
     const sketch = operation === 'sketch' && engine === 'krea_edit';
@@ -225,9 +250,14 @@ export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) 
     };
     const size = imageDimensions(config, engine === 'moss' ? 16 : 8);
     let text = prompt;
-    if (operation === 'bbox') {
+    if (operation === 'bbox' && engine === 'krea') {
+        // Krea2 reads the layout JSON of the Krea2 BBOX Prompter; the Environment section becomes its background.
+        const { environment, ...sections } = config.prompt_sections || {};
+        const scene = [composePrompt({ ...config, prompt_sections: sections }), alphaBackground[alpha]].filter(Boolean).join('\n\n');
+        text = krea2Layout(scene, environment?.trim() || '', config.boxes, size);
+    } else if (operation === 'bbox') {
         // Boxes are stored as canvas fractions and written in the MOSS-Image layout format, like the official bbox template;
-        // MOSS-Image is trained on it and the other text-to-image engines receive it as prompt text.
+        // MOSS-Image is trained on it and Qwen and Anima receive it as prompt text.
         // List widget values are wrapped in __value__ because a bare list means a link in API prompts.
         const boxes = add('CreateBoundingBoxes', { ...size, editor_state: { __value__: config.boxes.map(box => ({
             x: Math.round(box.x * size.width), y: Math.round(box.y * size.height), width: Math.round(box.width * size.width), height: Math.round(box.height * size.height),
