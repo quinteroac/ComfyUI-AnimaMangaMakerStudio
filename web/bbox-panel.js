@@ -1,4 +1,5 @@
-import { el, button, iconButton, field } from './client.js';
+import { el, button, iconButton, field, uuid } from './client.js';
+import { rectMatrix, transformRect } from './size.js';
 import { slider, toggle, seed } from './controls.js';
 
 const boxTypes = [['object', 'Object'], ['character', 'Character'], ['text', 'Text']];
@@ -9,10 +10,12 @@ const engines = [['moss', 'MOSS-Image · trained on this layout'], ['krea', 'Kre
 
 // Boxes are stored as fractions of the canvas so they survive canvas resizing; Klecks receives them in canvas pixels.
 // They belong to the workspace and are shared by every engine, while each engine keeps its own prompt and model settings.
-export function bboxControls(studio, kind, send, dimensions, changed) {
+// `linked` maps a box id to the ids sharing its generated layer, and `moved` reports a canvas move or resize of a linked box.
+export function bboxControls(studio, kind, send, dimensions, changed, linked, moved) {
     const scope = `bbox_${kind}`, fresh = !studio.project.workspace[scope], state = studio.state(scope);
     if (fresh) state.engine = 'moss';
     state.boxes ||= [];
+    for (const box of state.boxes) box.id ||= uuid().slice(0, 8);
     let cfg = studio.config(scope, state.engine);
     const element = el('div');
     const drawing = el('input', { type: 'checkbox', 'aria-label': 'Draw boxes on canvas', onchange: () => send('manga-drawing-box-tool', { enabled: drawing.checked }) });
@@ -31,9 +34,19 @@ export function bboxControls(studio, kind, send, dimensions, changed) {
         to.push(structuredClone(state.boxes)); state.boxes = from.pop();
         changed(); sync(); renderList();
     }
+    let shown = false;
+    const pixels = (box, size) => ({ x: box.x * size.width, y: box.y * size.height, width: box.width * size.width, height: box.height * size.height });
+    const fraction = (rect, size) => ({ x: rect.x / size.width, y: rect.y / size.height, width: rect.width / size.width, height: rect.height / size.height });
+    function transformBoxes(ids, matrix, size) {
+        for (const box of state.boxes) {
+            if (!ids.includes(box.id)) continue;
+            const rect = transformRect(pixels(box, size), matrix, size);
+            if (rect.width > 0 && rect.height > 0) Object.assign(box, fraction(rect, size));
+        }
+    }
     function sync() {
         const size = dimensions();
-        if (size) send('manga-drawing-guide-boxes', { boxes: state.boxes.map((box, i) => ({ x: Math.round(box.x * size.width), y: Math.round(box.y * size.height),
+        if (size && shown) send('manga-drawing-guide-boxes', { boxes: state.boxes.map((box, i) => ({ x: Math.round(box.x * size.width), y: Math.round(box.y * size.height),
             width: Math.round(box.width * size.width), height: Math.round(box.height * size.height),
             label: `${i + 1} · ${boxTypes.find(([type]) => type === box.type)[1]}`, color: boxColor(box, i) })) });
     }
@@ -75,19 +88,24 @@ export function bboxControls(studio, kind, send, dimensions, changed) {
         renderList();
     }
     render();
-    return { get cfg() { return cfg; }, get boxes() { return state.boxes; }, element, sync,
+    return { get cfg() { return cfg; }, get boxes() { return state.boxes; }, element,
+        sync() { shown = true; sync(); },
         place(box, index) {
-            const size = dimensions(), rect = { x: box.x / size.width, y: box.y / size.height, width: box.width / size.width, height: box.height / size.height };
+            const size = dimensions(), rect = fraction(box, size), target = state.boxes[index];
             // Focus stays in Klecks so Ctrl+Z can undo an accidental box right away.
-            edit(() => {
-                if (index < state.boxes.length) { Object.assign(state.boxes[index], rect); return; }
+            if (!target) return edit(() => {
                 const used = state.boxes.map(boxColor);
-                state.boxes.push({ ...rect, type: 'object', desc: '', text: '', color: boxColors.find(value => !used.includes(value)) || boxColors[state.boxes.length % boxColors.length] });
+                state.boxes.push({ ...rect, id: uuid().slice(0, 8), type: 'object', desc: '', text: '', color: boxColors.find(value => !used.includes(value)) || boxColors[state.boxes.length % boxColors.length] });
             });
+            // The other boxes of a generated group follow, so the group and its layer move as one.
+            const matrix = rectMatrix(pixels(target, size), box), group = linked(target.id);
+            edit(() => { if (group) transformBoxes(group.filter(id => id !== target.id), matrix, size); Object.assign(target, rect); });
+            if (group) moved(target.id, matrix);
         },
+        transform(ids, matrix) { const size = dimensions(); if (size) edit(() => transformBoxes(ids, matrix, size)); },
         undo: () => step(undone, redone),
         redo: () => step(redone, undone),
         stopDrawing() { drawing.checked = false; },
-        hide() { drawing.checked = false; send('manga-drawing-box-tool', { enabled: false }); send('manga-drawing-guide-boxes', { boxes: [] }); },
+        hide() { shown = false; drawing.checked = false; send('manga-drawing-box-tool', { enabled: false }); send('manga-drawing-guide-boxes', { boxes: [] }); },
     };
 }

@@ -1,6 +1,7 @@
 import { api } from '../../scripts/api.js';
 import { el, button, field, request, uuid } from './client.js';
-import { buildPrompt, options } from './prompts.js';
+import { alphaMethods, buildPrompt, options } from './prompts.js';
+import { boxGroups } from './size.js';
 import { inheritModels } from './models.js';
 import { mangaControls } from './manga-panel.js';
 import { segmented, slider, toggle, seed } from './controls.js';
@@ -94,7 +95,10 @@ export function sketchControls(studio, kind, project, send, busyChanged) {
     const manga = mangaControls(studio, kind, () => { revision++; studio.saveSoon(); livePanel.hidden = manga.cfg.mode !== 'lite'; scheduleLive(); });
     livePanel.hidden = manga.cfg.mode !== 'lite';
     const mangaSettings = el('div', {}, livePanel, manga.element);
-    const bbox = bboxControls(studio, kind, send, () => dimensions, () => { revision++; studio.saveSoon(); });
+    // Split BBox layers in this editor session and the ids of the boxes each one came from.
+    const links = new Map(), linkOf = id => [...links].find(([, ids]) => ids.includes(id));
+    const bbox = bboxControls(studio, kind, send, () => dimensions, () => { revision++; studio.saveSoon(); },
+        id => linkOf(id)?.[1], (id, matrix) => send('manga-drawing-transform-layer', { name: linkOf(id)[0], matrix }));
     const heading = el('h3', { text: title() });
     const tool = segmented('Drawing workflow', Object.entries(titles), 'sketch', () => {
         if (mode === 'bbox') bbox.hide();
@@ -249,6 +253,10 @@ export function sketchControls(studio, kind, project, send, busyChanged) {
             if (settings.random_seed) settings.seed = Math.floor(Math.random() * 2 ** 48);
             let built;
             // BBox to Image is text-to-image: the layout comes from the boxes, so the drawing is not uploaded.
+            // With transparency, each group of overlapping boxes becomes its own layer so elements can be moved apart.
+            ticket.layerName = `${ticket.name} · ${layerId}`;
+            if (ticket.mode === 'bbox' && alphaMethods[ticket.engine]?.includes(settings.alpha) && settings.boxes.length) ticket.parts = boxGroups(settings.boxes, r).map(group => ({ ...group,
+                name: `${ticket.layerName} · Box${group.boxes.length > 1 ? 'es' : ''} ${group.boxes.join('+')}`, ids: group.boxes.map(number => settings.boxes[number - 1].id) }));
             if (ticket.mode === 'bbox') built = buildPrompt(studio.defs, 'bbox', ticket.engine, { ...settings, aspect_ratio: `${r.width}:${r.height}` }, [], ticket.token);
             else {
                 let blob = data.png;
@@ -302,7 +310,7 @@ export function sketchControls(studio, kind, project, send, busyChanged) {
                     if (active.revision !== revision) { finish('Skipped an older result · Latest drawing preserved.'); break; }
                     status.textContent = 'Blending the result into a new layer…'; active.applying = true;
                     send('manga-drawing-apply-art', { token: active.token, imageUrl: api.apiURL('/view?' + new URLSearchParams(job.drawing_output)),
-                        region: active.region, mask: active.mask, layerName: `${active.name} · ${layerId}`, fit: active.mode === 'manga' ? 'contain' : 'stretch', revision: active.frameRevision, feather: active.settings.feather, opacity: active.settings.blend_opacity }); break;
+                        region: active.region, mask: active.mask, parts: active.parts, layerName: active.layerName, fit: active.mode === 'manga' ? 'contain' : 'stretch', revision: active.frameRevision, feather: active.settings.feather, opacity: active.settings.blend_opacity }); break;
                 }
                 if (job.state === 'error' || job.state === 'cancelled') { if (job.state === 'cancelled') pending = false; finish(job.state === 'error' ? `${title()} failed: ${JSON.stringify(job.error)}` : 'Generation cancelled.'); break; }
                 status.textContent = job.state === 'running' ? `Generating ${title()}…` : `${title()} queued…`;
@@ -329,12 +337,14 @@ export function sketchControls(studio, kind, project, send, busyChanged) {
             if (data.token === 'live') liveSnapshot?.resolve();
             else if (data.token !== 'preview') submit(data);
         } else if (data.type === 'manga-drawing-art-applied' && data.token === active?.token) {
+            if (active.parts) { links.clear(); for (const part of active.parts) links.set(part.name, part.ids); }
             const refresh = !pending; finish('AI layer added · Save to project to preserve it.');
             if (refresh) send('manga-drawing-snapshot', { token: 'preview' });
         } else if (data.type === 'manga-drawing-box-drawn' && mode === 'bbox' && dimensions) bbox.place(data.box, data.index);
         else if (data.type === 'manga-drawing-box-undo' && mode === 'bbox') bbox.undo();
         else if (data.type === 'manga-drawing-box-redo' && mode === 'bbox') bbox.redo();
         else if (data.type === 'manga-drawing-box-tool-end') bbox.stopDrawing();
+        else if (data.type === 'manga-drawing-layer-transformed' && links.has(data.name)) bbox.transform(links.get(data.name), data.matrix);
         else if (data.type === 'manga-drawing-art-stale' && data.token === active?.token) finish('Skipped an older result · Latest drawing preserved.');
         else if (data.type === 'manga-drawing-ai-error') {
             if (data.token === 'preview') status.textContent = data.error;

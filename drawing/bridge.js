@@ -1,6 +1,7 @@
 localStorage.setItem('klecks-language', 'en');
 const send = (type, data = {}) => parent.postMessage({ type, ...data }, location.origin);
 let editor, saving = false, aiBusy = false, submitSuccess, submitError, canvasRevision = 0, strokeActive = false, boxTool = false;
+const partLayers = new Set();
 
 async function save() {
     if (!editor || saving) return;
@@ -38,7 +39,8 @@ window.addEventListener('message', async event => {
             onStrokeStart: () => { strokeActive = true; canvasRevision++; editor.setPreviewImage(null); send('manga-drawing-changed'); },
             onStrokeEnd: () => { strokeActive = false; send('manga-drawing-stroke-end'); },
             onBoxDrawn: (box, index) => send('manga-drawing-box-drawn', { box, index }),
-            onBoxToolEnd: () => { boxTool = false; send('manga-drawing-box-tool-end'); }, onSubmit: (success, error) => {
+            onBoxToolEnd: () => { boxTool = false; send('manga-drawing-box-tool-end'); },
+            onLayerTransform: (name, matrix) => send('manga-drawing-layer-transformed', { name, matrix }), onSubmit: (success, error) => {
             submitSuccess = success; submitError = error; save();
         } });
         try {
@@ -70,6 +72,9 @@ window.addEventListener('message', async event => {
             if (!editor) return;
             editor.setPreviewImage(data.imageUrl ? { image: await fitted(data.imageUrl, data.region, 'contain'), region: data.region } : null);
         } catch (error) { send('manga-drawing-ai-error', { token: 'live', error: error.message || String(error) }); }
+    } else if (data?.type === 'manga-drawing-transform-layer') {
+        if (!editor) return;
+        editor.transformLayer(data.name, data.matrix); send('manga-drawing-changed', { source: 'ai' });
     } else if (data?.type === 'manga-drawing-ai-busy') aiBusy = !!data.busy;
     else if (data?.type === 'manga-drawing-snapshot') {
         try {
@@ -108,7 +113,22 @@ window.addEventListener('message', async event => {
                 pixels.data[index] *= (maskPixels ? maskPixels[index] / 255 : edge) * opacity;
             }
             ctx.putImageData(pixels, 0, 0);
-            editor.applyLayer({ name: data.layerName, image: crop, region: r, mask: clearMask });
+            if (data.parts) {
+                // Each box group keeps the union of its boxes; pixels outside every box get their own layer, and groups from earlier results are emptied.
+                const layers = [...data.parts.map(part => ({ name: part.name, include: part.rects })),
+                    { name: `${data.layerName} · Outside boxes`, exclude: data.parts.flatMap(part => part.rects) }];
+                for (const name of partLayers) if (name.startsWith(`${data.layerName} · `) && !layers.some(layer => layer.name === name)) layers.push({ name, include: [] });
+                for (const layer of layers) {
+                    const piece = document.createElement('canvas'); piece.width = r.width; piece.height = r.height;
+                    const pieceCtx = piece.getContext('2d');
+                    pieceCtx.beginPath();
+                    for (const box of layer.include || [r]) pieceCtx.rect(box.x - r.x, box.y - r.y, box.width, box.height);
+                    pieceCtx.clip(); pieceCtx.drawImage(crop, 0, 0);
+                    for (const box of layer.exclude || []) pieceCtx.clearRect(box.x - r.x, box.y - r.y, box.width, box.height);
+                    if (!partLayers.has(layer.name) && !pieceCtx.getImageData(0, 0, r.width, r.height).data.some((value, i) => i % 4 === 3 && value)) continue;
+                    partLayers.add(layer.name); editor.applyLayer({ name: layer.name, image: piece, region: r });
+                }
+            } else editor.applyLayer({ name: data.layerName, image: crop, region: r, mask: clearMask });
             send('manga-drawing-changed', { source: 'ai' }); send('manga-drawing-art-applied', { token: data.token });
         } catch (error) { send('manga-drawing-ai-error', { token: data.token, error: error.message || String(error) }); }
         finally { saving = false; document.documentElement.inert = false; }

@@ -14,12 +14,14 @@
     "getRevision",
     "onBoxDrawn",
     "onBoxToolEnd",
+    "onLayerTransform",
     "onReady",
     "onStrokeEnd",
     "onStrokeStart",
     "setBoxTool",
     "setGuideBoxes",
     "setGuideRegion",
-    "setPreviewImage"
+    "setPreviewImage",
+    "transformLayer"
   ]
 }

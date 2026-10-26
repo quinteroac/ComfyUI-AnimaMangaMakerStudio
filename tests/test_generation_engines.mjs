@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { buildPrompt, initialSettings, composePrompt, options } from '../web/prompts.js';
+import { boxGroups, rectMatrix, transformRect } from '../web/size.js';
 import { globalModels, inheritModels, applyPreset, savedPreset } from '../web/models.js';
 
 const defs = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
@@ -94,6 +95,16 @@ for (const [engine, op, images] of [['moss', 'bbox', []], ['krea', 'bbox', []], 
         jobs.push({ engine, op, count: images.length, ...built });
     }
 }
+// Box 3 overlaps only box 2, so 1, 2 and 3 move as one layer; touching edges do not merge.
+const groups = boxGroups([{ x: 0, y: 0, width: 0.3, height: 0.3 }, { x: 0.2, y: 0.2, width: 0.3, height: 0.3 }, { x: 0.45, y: 0.45, width: 0.2, height: 0.2 },
+    { x: 0.7, y: 0, width: 0.3, height: 0.3 }, { x: 0.65, y: 0.7, width: 0.05, height: 0.1 }], { width: 1000, height: 500 });
+assert.deepEqual(groups.map(g => g.boxes), [[1, 2, 3], [4], [5]]);
+assert.deepEqual(groups[1].rects, [{ x: 700, y: 0, width: 300, height: 150 }]);
+// Moving or resizing a box maps the old rect onto the new one; transformed rects stay inside the canvas.
+const resize = rectMatrix({ x: 10, y: 20, width: 100, height: 50 }, { x: 30, y: 10, width: 200, height: 25 });
+assert.deepEqual(transformRect({ x: 10, y: 20, width: 100, height: 50 }, resize, { width: 1000, height: 500 }), { x: 30, y: 10, width: 200, height: 25 });
+assert.deepEqual(transformRect({ x: 60, y: 70, width: 10, height: 10 }, resize, { width: 1000, height: 500 }), { x: 130, y: 35, width: 20, height: 5 });
+assert.deepEqual(transformRect({ x: 900, y: 0, width: 100, height: 10 }, { a: 1, b: 0, c: 0, d: 1, e: 50, f: -5 }, { width: 1000, height: 500 }), { x: 950, y: 0, width: 50, height: 5 });
 const plain = buildPrompt(defs, 'bbox', 'anima', inheritModels({ ...initialSettings('anima'), prompt: 'x', boxes: [], alpha: 'lora' }, settings.models.anima, 'anima'), [], 'alpha');
 assert(!Object.values(plain.graph).some(n => ['JoinImageWithAlpha', 'VNCCSChromaKey', 'RGBAVAELoader'].includes(n.class_type)));
 fs.writeFileSync('/tmp/manga-generation-engines-graphs.json', JSON.stringify(jobs));
