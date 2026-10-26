@@ -20,6 +20,10 @@ Sketch parameters and prompt/settings presets are stored separately for referenc
 
 Lower denoise favors the draft; higher denoise gives the edit model more freedom. Test changes on a selected region before enabling realtime. Realtime is useful when the model and settings are fast enough to keep up with drawing; it remains a session choice.
 
+## Transparency
+
+**Transparency** in Sketch to Art and BBox to Image generates an RGBA layer, so only the subject covers the drawing. **Alpha LoRA** adds the alpha LoRA to the sampler model and decodes with alpha VAEs: MOSS-Image uses an RGBA VAE through **Load RGBA VAE (Flux2)**; Krea2 and Krea2 Edit decode the RGB and alpha channels with the Wan-Alpha VAEs. **Chroma key** asks for a flat indigo background and removes it with **VNCCS Chroma Key**. Qwen Image 2.1 offers **Native RGBA** because its own VAE decodes four channels. Every method adds a background instruction to the prompt. The LoRA and VAEs inherit from the engine's global configuration and can be changed below the selector; the alpha LoRAs are trained for specific base models, so other checkpoints may return an opaque background. Anima has no transparency mode.
+
 ## Regions, masks and blending
 
 **Layer blending** controls edge feather in pixels and blend opacity. Results are inserted into a dedicated editable AI layer, reused within the editor session. Existing drawing layers and pixels outside the selected region are preserved; Klecks' native undo/redo works for AI updates. **Save to project** or **Submit** saves the composed PNG and layered PSD after generation finishes or is cancelled. Individual generated crops stay in ComfyUI output/history and do not become separate project assets for every stroke; temporary input crops are removed.

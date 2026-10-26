@@ -68,6 +68,7 @@ export function sketchControls(studio, kind, project, send, busyChanged) {
     const presets = el('div', { class: 'mm-row' });
     const blend = el('details');
     const prompt = el('details');
+    const transparency = el('div');
     const sampling = el('div');
     const models = el('div');
     const renderModels = () => { models.replaceChildren(); studio.modelControls(models, cfg, 'krea_edit', changed, false, 'sketch', renderModels); };
@@ -80,6 +81,7 @@ export function sketchControls(studio, kind, project, send, busyChanged) {
         for (const [key, label, range] of [['feather', 'Edge feather · px', [0, 128]], ['blend_opacity', 'Blend opacity · %', [0, 100]]]) blend.append(slider(label,
             el('input', { type: 'number', 'aria-label': label, value: cfg[key] ?? (key === 'feather' ? 16 : 100), step: 1, onchange: event => { cfg[key] = Number(event.target.value); changed(); } }), range));
         prompt.replaceChildren(el('summary', { text: 'Prompt' })); studio.promptControls(prompt, cfg, changed, true);
+        transparency.replaceChildren(); studio.alphaControls(transparency, cfg, 'krea_edit', changed);
         sampling.replaceChildren(); studio.samplingControls(sampling, cfg, 'krea_edit', changed, 'sketch');
         sampling.append(seed('Seed', cfg, changed));
         renderModels();
@@ -103,7 +105,7 @@ export function sketchControls(studio, kind, project, send, busyChanged) {
         regionControls.hidden = mode === 'bbox'; paintPreview(); if (mode === 'bbox') bbox.sync();
         status.textContent = hints[mode];
     });
-    const sketchSettings = el('div', {}, presets, blend, prompt, sampling, models, toggle('Realtime on stroke release', realtime));
+    const sketchSettings = el('div', {}, presets, blend, prompt, transparency, sampling, models, toggle('Realtime on stroke release', realtime));
     const workflowSettings = el('div', {}, sketchSettings);
     const regionControls = el('div', {}, regionMode, el('small', { id: 'mm-sketch-region-help', text: 'Drag with the left mouse button on the preview to select the generation region. Choose Whole canvas to reset.' }), canvas, coordinates, preview, maskControls);
     const element = el('aside', { class: 'mm-sketch-controls', 'aria-label': 'Sketch to Art controls' }, tool, heading,

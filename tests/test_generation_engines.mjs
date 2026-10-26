@@ -74,5 +74,27 @@ assert.deepEqual([sky.x, sky.y, sky.width], [0, 0, mossGraph.find(n => n.class_t
 assert.deepEqual(text.metadata, { type: 'text', text: 'MANGA', desc: 'Bold title', palette: [] });
 assert.equal(character.metadata.type, 'obj'); assert.equal(character.metadata.text, '');
 assert.throws(() => buildPrompt(defs, 'bbox', 'krea_edit', { ...mossCfg, engine: 'krea_edit' }, [], 'bbox'), /requires at least one reference image/);
+// Alpha output: the LoRA joins the sampler model and the decode produces RGBA; Qwen's VAE is already RGBA.
+for (const [engine, op, images] of [['moss', 'bbox', []], ['krea', 'bbox', []], ['krea_edit', 'sketch', ['sketch.png']], ['qwen', 'bbox', []]]) {
+    for (const alpha of engine === 'qwen' ? ['native'] : ['lora', 'chromakey']) {
+        const cfg = inheritModels({ ...initialSettings(engine), prompt: 'A girl with fennec ears.', aspect_ratio: '1:1', megapixels: 1, boxes: [], alpha }, settings.models[engine], engine);
+        for (const [key, node, field] of [['model', 'UNETLoader', 'unet_name'], ['encoder', 'CLIPLoader', 'clip_name'], ['vae', 'VAELoader', 'vae_name'], ['alpha_vae', engine === 'moss' ? 'RGBAVAELoader' : 'VAELoader', 'vae_name'], ['alpha_rgb_vae', 'VAELoader', 'vae_name']]) {
+            if (cfg[key] && !options(defs, node, field).includes(cfg[key])) cfg[key] = options(defs, node, field)[0];
+        }
+        if (!options(defs, 'LoraLoaderModelOnly', 'lora_name').includes(cfg.alpha_lora)) cfg.alpha_lora = options(defs, 'LoraLoaderModelOnly', 'lora_name')[0];
+        if (engine === 'moss' && !options(defs, 'LoraLoaderModelOnly', 'lora_name').includes(cfg.accelerator_lora)) cfg.accelerator_lora = '';
+        const built = buildPrompt(defs, op, engine, cfg, images, 'alpha'), nodes = Object.values(built.graph);
+        const decoded = built.graph[built.graph[built.outputNode].inputs.images[0]];
+        assert.equal(decoded.class_type, { lora: engine === 'moss' ? 'VAEDecode' : 'JoinImageWithAlpha', chromakey: 'VNCCSChromaKey', native: 'VAEDecode' }[alpha]);
+        if (alpha === 'lora' && engine === 'moss') assert.equal(built.graph[decoded.inputs.vae[0]].class_type, 'RGBAVAELoader');
+        const alphaLoras = nodes.filter(n => n.class_type === 'LoraLoaderModelOnly' && n.inputs.lora_name === cfg.alpha_lora);
+        assert.equal(alphaLoras.length, alpha === 'lora' ? 1 : 0);
+        const encoded = nodes.find(n => ['CLIPTextEncode', 'Krea2EditGroundedEncode', 'TextEncodeQwenImage21', 'MOSSImageLayoutPrompt'].includes(n.class_type));
+        assert.match(JSON.stringify(encoded.inputs), alpha === 'chromakey' ? /#1E0050/ : /transparent background/);
+        jobs.push({ engine, op, count: images.length, ...built });
+    }
+}
+const plain = buildPrompt(defs, 'bbox', 'anima', inheritModels({ ...initialSettings('anima'), prompt: 'x', boxes: [], alpha: 'lora' }, settings.models.anima, 'anima'), [], 'alpha');
+assert(!Object.values(plain.graph).some(n => ['JoinImageWithAlpha', 'VNCCSChromaKey', 'RGBAVAELoader'].includes(n.class_type)));
 fs.writeFileSync('/tmp/manga-generation-engines-graphs.json', JSON.stringify(jobs));
 console.log(`${jobs.length} Moss/Anima graphs passed: workflow sampling, conditioning, latent types, LoRA order, overrides, bbox layout prompts for every text-to-image engine and model errors.`);

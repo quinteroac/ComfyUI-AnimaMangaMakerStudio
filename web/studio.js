@@ -2,7 +2,7 @@ import { analysisInstruction } from './page-analysis.js';
 import { api } from '../../scripts/api.js';
 import { uuid, el, button, iconButton, field, request, assetUrl, download, chooseFile, sizeControls } from './client.js';
 import { sizeSettings, sizeLabel } from './size.js';
-import { options, defaultAttention, initialSettings, buildPrompt, composePrompt, promptSections, referencePrompt, parsePrompt, referencePresets, refinementPresets, textGeneratorDefaults, textInstruction } from './prompts.js';
+import { options, defaultAttention, alphaMethods, initialSettings, buildPrompt, composePrompt, promptSections, referencePrompt, parsePrompt, referencePresets, refinementPresets, textGeneratorDefaults, textInstruction } from './prompts.js';
 import { newPage, normalizePage, PageEditor } from './editor.js';
 import { modelFields, globalModels, inheritModels, applyPreset, savedPreset } from './models.js';
 import { openDrawing } from './drawing.js';
@@ -328,6 +328,23 @@ export class Studio {
             combo('Scheduler', options(this.defs, 'KSampler', 'scheduler'), cfg.scheduler, value => set('scheduler', value)));
         if (['qwen', 'anima'].includes(engine) && !global) group.append(field('Negative prompt', el('textarea', { value: cfg.negative, oninput: e => { cfg.negative = e.target.value; changed(); } })));
         host.append(group);
+    }
+    alphaControls(host, cfg, engine, changed) {
+        const methods = alphaMethods[engine];
+        if (!methods) return;
+        if (!methods.includes(cfg.alpha)) cfg.alpha = '';
+        const labels = { lora: 'Alpha LoRA', chromakey: 'Chroma key', native: 'Native RGBA' };
+        const set = key => value => { cfg[key] = value; (cfg.model_overrides ||= {})[key] = value; changed(); };
+        const files = el('div');
+        const render = () => files.replaceChildren(...cfg.alpha !== 'lora' ? [] : [
+            combo('Alpha LoRA', options(this.defs, 'LoraLoaderModelOnly', 'lora_name'), cfg.alpha_lora, set('alpha_lora')),
+            ...engine === 'moss' ? [combo('RGBA VAE', options(this.defs, 'RGBAVAELoader', 'vae_name'), cfg.alpha_vae, set('alpha_vae'))]
+                : [combo('Alpha RGB VAE', options(this.defs, 'VAELoader', 'vae_name'), cfg.alpha_rgb_vae, set('alpha_rgb_vae')),
+                    combo('Alpha channel VAE', options(this.defs, 'VAELoader', 'vae_name'), cfg.alpha_vae, set('alpha_vae'))]]);
+        host.append(segmented('Transparency', [['', 'Off'], ...methods.map(value => [value, labels[value]])], cfg.alpha, value => { cfg.alpha = value; changed(); render(); }),
+            el('small', { text: engine === 'qwen' ? 'Qwen Image 2.1 decodes RGBA; the prompt asks for a transparent background.'
+                : 'Alpha LoRA decodes with alpha VAEs. Chroma key asks for a flat indigo background and removes it with VNCCS Chroma Key.' }), files);
+        render();
     }
     presetChanged(space, host = this.views.get(space)) {
         const state = this.state(space);

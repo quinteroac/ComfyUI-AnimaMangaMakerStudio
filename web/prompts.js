@@ -133,7 +133,14 @@ export function defaultAttention(defs, engine) {
     return options(defs, 'ModelAttentionBackend', 'attention').includes('comfy kitchen attention') ? 'comfy kitchen attention' : 'pytorch attention';
 }
 
-export const textGeneratorDefaults = { encoder: '', encoder_type: 'stable_diffusion', encoder_device: 'default', max_length: 1024 };
+// Qwen Image 2.1 decodes RGBA with its own VAE; MOSS and Krea2 need an alpha LoRA with alpha VAEs, or a chroma key over a flat background.
+export const alphaMethods = { moss: ['lora', 'chromakey'], krea: ['lora', 'chromakey'], krea_edit: ['lora', 'chromakey'], qwen: ['native'] };
+const alphaBackground = {
+    lora: 'Isolated on a transparent background.', native: 'Isolated on a transparent background.',
+    chromakey: 'Isolated on a completely flat, uniform, solid dark indigo purple background (hex #1E0050) with no gradient, no shadow and no texture.',
+};
+
+export const textGeneratorDefaults ={ encoder: '', encoder_type: 'stable_diffusion', encoder_device: 'default', max_length: 1024 };
 
 export function textInstruction(task, config, section) {
     const format = 'Return only an image prompt in this format: [TASK: TEXT_TO_IMAGE], then [Subject], [Appearance], [Pose], [Expression], [Composition], [Environment], [Lighting], [Style]. Put each tag and its content on a separate paragraph. Omit empty sections. Do not use markdown fences or explanations.';
@@ -151,9 +158,11 @@ export const initialSettings = (engine) => ({
     attention: '', cache_device: 'auto', cache_dtype: 'default',
     ref_boost: 1, ref_boost_a: 1, fit_mode: 'fit', grounding_px: 768, grounding_system_prompt: '',
     references: [], loras: [], max_length: 512, analysis_prompts: {},
-    analysis_encoder: '', analysis_encoder_type: 'stable_diffusion', finish_mode: 'refine',
+    analysis_encoder: '', analysis_encoder_type: 'stable_diffusion', finish_mode: 'refine', alpha: '',
     ...(engine === 'krea_edit' ? { steps: 4, latent_reference: '' } : {}),
-    ...(['krea', 'krea_edit'].includes(engine) ? { encoder_type: 'krea2', shift: 1.15 } : {}),
+    ...(['krea', 'krea_edit'].includes(engine) ? { encoder_type: 'krea2', shift: 1.15,
+        alpha_lora: 'krea2_manga_alpha_image_lora.safetensors', alpha_vae: 'wan_alpha_v2_vae_alpha.safetensors', alpha_rgb_vae: 'wan_alpha_v2_vae_rgb.safetensors' } : {}),
+    ...(engine === 'moss' ? { alpha_lora: 'moss_manga_alpha_image_lora.safetensors', alpha_vae: 'flux2_klein_alpha_rgba_vae.safetensors' } : {}),
     ...(['moss', 'anima'].includes(engine) ? { steps: 8, sampler: 'er_sde', scheduler: 'simple',
         encoder_type: engine === 'moss' ? 'moss_image' : 'qwen_image', accelerator_lora: engine === 'moss' ? 'moss/lora.safetensors' : '',
         negative: engine === 'anima' ? 'score_6, score_5, score_4, worst quality, low quality, text, censored, deformed, bad hand, blurry, (watermark),' : '' } : {}),
@@ -201,7 +210,19 @@ export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) 
     if (images.length && config.size_mode === 'manual' && (engine === 'qwen' || operation === 'refine')) {
         images[0] = add('ImageScale', { image: images[0], upscale_method: 'lanczos', ...imageDimensions(config, engine === 'qwen' ? 32 : 8), crop: 'center' });
     }
-    const prompt = composePrompt(config);
+    const alpha = alphaMethods[engine]?.includes(config.alpha) ? config.alpha : '';
+    const prompt = [composePrompt(config), alphaBackground[alpha]].filter(Boolean).join('\n\n');
+    const alphaLora = model => alpha === 'lora' ? add('LoraLoaderModelOnly', { model, lora_name: check('LoraLoaderModelOnly', 'lora_name', config.alpha_lora, 'Alpha LoRA'), strength_model: 1 }) : model;
+    // Settings follow the chroma key workflows; native RGBA comes straight from the VAE.
+    const decode = (samples, vae) => {
+        if (alpha === 'chromakey') return add('VNCCSChromaKey', { image: add('VAEDecode', { samples, vae }), tolerance: 0.15, softness: 0.12, despill_strength: 0.65, edge_width: 3,
+            matte_cleanup: 0.1, foreground_recover: 0.35, edge_decontaminate: 0.75, edge_choke: 0.08, matte_method: 'guided_edge', screen_mode: 'auto', output_mode: 'straight_rgba', use_sam3_recovery_mask: false });
+        if (alpha !== 'lora') return add('VAEDecode', { samples, vae });
+        if (engine === 'moss') return add('VAEDecode', { samples, vae: add('RGBAVAELoader', { vae_name: check('RGBAVAELoader', 'vae_name', config.alpha_vae, 'RGBA VAE') }) });
+        const rgb = add('VAEDecode', { samples, vae: add('VAELoader', { vae_name: check('VAELoader', 'vae_name', config.alpha_rgb_vae, 'Alpha RGB VAE') }) });
+        const matte = add('VAEDecode', { samples, vae: add('VAELoader', { vae_name: check('VAELoader', 'vae_name', config.alpha_vae, 'Alpha channel VAE') }) });
+        return add('JoinImageWithAlpha', { image: rgb, alpha: add('InvertMask', { mask: add('ImageToMask', { image: matte, channel: 'red' }) }) });
+    };
     const size = imageDimensions(config, engine === 'moss' ? 16 : 8);
     let text = prompt;
     if (operation === 'bbox') {
@@ -227,13 +248,14 @@ export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) 
             if (engine === 'moss' && lora.name === config.accelerator_lora) continue;
             model = add('LoraLoaderModelOnly', { model, lora_name: check('LoraLoaderModelOnly', 'lora_name', lora.name, 'LoRA'), strength_model: Number(lora.model) });
         }
+        model = alphaLora(model);
         if (config.attention) model = add('ModelAttentionBackend', { model, attention: check('ModelAttentionBackend', 'attention', config.attention, 'Attention') });
         const positive = add('CLIPTextEncode', { clip, text });
         const negative = engine === 'moss' ? add('ConditioningZeroOut', { conditioning: positive }) : add('CLIPTextEncode', { clip, text: config.negative });
         const latent = add(engine === 'moss' ? 'EmptyFlux2LatentImage' : 'EmptyLatentImage', { ...size, batch_size: 1 });
         const samples = add('KSampler', { model, positive, negative, latent_image: latent, seed: Number(config.seed), steps: Number(config.steps),
             cfg: Number(config.cfg), sampler_name: config.sampler, scheduler: config.scheduler, denoise: 1 });
-        const decoded = add('VAEDecode', { samples, vae });
+        const decoded = decode(samples, vae);
         const output = operation === 'bbox' ? add('PreviewImage', { images: decoded }) : add('SaveImage', { images: decoded, filename_prefix: `manga-maker/${jobId}/result` });
         return { graph, outputNode: output[0] };
     }
@@ -252,6 +274,7 @@ export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) 
         const loaded = add(type, { model, lora_name: lora.name, strength_model: Number(lora.model), ...(engine === 'krea_edit' ? {} : { clip, strength_clip: Number(lora.clip) }) });
         model = loaded; if (engine !== 'krea_edit') clip = [loaded[0], 1];
     }
+    model = alphaLora(model);
     const attention = config.attention || defaultAttention(defs, engine);
     if (attention) {
         check('ModelAttentionBackend', 'attention', attention, 'Attention');
@@ -325,7 +348,7 @@ export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) 
         sampled = add('KSampler', { model, positive, negative, latent_image: latent, seed: Number(config.seed), steps: Number(config.steps),
             cfg: Number(config.cfg), sampler_name: config.sampler, scheduler: config.scheduler, denoise: 1 });
     }
-    const decoded = add('VAEDecode', { samples: sampled, vae });
+    const decoded = decode(sampled, vae);
     const output = sketch || operation === 'bbox' ? add('PreviewImage', { images: decoded }) : add('SaveImage', { images: decoded, filename_prefix: `manga-maker/${jobId}/result` });
     return { graph, outputNode: output[0] };
 }
