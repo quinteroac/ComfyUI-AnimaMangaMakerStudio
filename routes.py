@@ -16,6 +16,7 @@ from server import PromptServer
 
 from .storage import ProjectStore, RevisionConflict, contained
 from .models import ModelDownloads
+from . import style_library
 
 store = ProjectStore(Path(folder_paths.get_user_directory()) / 'manga-maker-settings.json',
                      Path(folder_paths.get_user_directory()) / 'manga-maker-projects')
@@ -152,6 +153,28 @@ async def install_font(request):
 @endpoint
 async def font_file(request):
     return web.FileResponse(store.font_path(request.match_info['font']))
+
+
+@routes.get('/manga-maker/styles/animadex/{kind}')
+@endpoint
+async def animadex_styles(request):
+    query = request.query
+    return web.json_response(await asyncio.to_thread(style_library.animadex, request.match_info['kind'], query.get('q', ''), max(0, int(query.get('offset', 0))), min(200, int(query.get('limit', 60)))))
+
+
+@routes.get('/manga-maker/styles/stylebook')
+@endpoint
+async def stylebook_styles(request):
+    return web.json_response(await asyncio.to_thread(style_library.stylebook))
+
+
+@routes.get('/manga-maker/styles/preview/{source}/{path:.*}')
+@endpoint
+async def style_preview(request):
+    path = contained(style_library.preview_roots[request.match_info['source']], request.match_info['path'])
+    if path.suffix.lower() not in style_library.preview_types:
+        raise ValueError('Unsupported preview format')
+    return web.FileResponse(path, headers={'Content-Type': style_library.preview_types[path.suffix.lower()]})
 
 
 @routes.post('/manga-maker/projects')

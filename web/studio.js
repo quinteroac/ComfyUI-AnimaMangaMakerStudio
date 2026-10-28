@@ -9,6 +9,7 @@ import { openDrawing } from './drawing.js';
 import { combo, segmented, slider, toggle, seed, resizer, summarize } from './controls.js';
 import { StoryStudio } from './story.js';
 import { assistantSettings } from './assistant.js';
+import { styleSource, openStylePicker } from './style-picker.js';
 
 const spaces = { story: 'Story', references: 'References', panels: 'Panels', refine: 'Refinement', design: 'Page layout', finish: 'Finishing' };
 const engines = { krea: 'Krea2', krea_edit: 'Krea2 Edit', qwen: 'Qwen Image 2.1', moss: 'moss', anima: 'anima', anima_edit: 'Anima Ref' };
@@ -428,6 +429,12 @@ export class Studio {
         task.querySelector('input').placeholder = 'TEXT_TO_IMAGE';
         task.querySelector('input').addEventListener('input', e => { sections.task = e.target.value; update(); });
         group.append(task);
+        const inputs = {};
+        if (styleSource(cfg.engine)) group.append(el('div', { class: 'mm-row' }, iconButton(styleSource(cfg.engine) === 'animadex' ? 'Browse Animadex styles and characters' : 'Browse Stylebook styles', 'image',
+            () => openStylePicker(this, cfg.engine, (key, update) => {
+                const input = inputs[key]; input.value = update(input.value);
+                input.dispatchEvent(new Event('input')); input.dispatchEvent(new Event('change')); input.closest('details').open = true;
+            }), {}, true)));
         for (const [key, tag] of promptSections) {
             const status = el('small', { text: snippet(sections[key]), class: sections[key]?.trim() ? 'mm-filled' : '' });
             const input = el('textarea', { value: sections[key] || '', rows: 3, 'aria-label': tag, oninput: e => {
@@ -435,6 +442,7 @@ export class Studio {
                 if (status.classList.contains('mm-filled') !== !!e.target.value.trim()) { status.textContent = snippet(e.target.value); status.classList.toggle('mm-filled'); filled(); }
                 update();
             }, onchange: e => { status.textContent = snippet(e.target.value); } });
+            inputs[key] = input;
             group.append(el('details', { class: 'mm-prompt-section' }, el('summary', {}, el('span', { text: tag }), status), enhanceField(input, key, tag)));
         }
         const free = el('textarea', { class: 'mm-prompt', value: cfg.prompt || '', placeholder: editing ? 'Additional instructions or a complete editing prompt…' : 'Additional text or any prompt outside this format…', oninput: e => { cfg.prompt = e.target.value; update(); } });
