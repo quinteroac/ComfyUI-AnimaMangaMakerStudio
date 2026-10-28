@@ -1,12 +1,36 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { mangaDefaults, buildMangaPrompt } from '../web/manga-prompt.js';
+import { mangaDefaults, buildMangaPrompt, mangaControlRanges, normalizeMangaConfig } from '../web/manga-prompt.js';
 import { initialSettings, options } from '../web/prompts.js';
 
 const defs = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const cfg = { ...initialSettings('qwen'), ...mangaDefaults,
     model: options(defs, 'UNETLoader', 'unet_name')[0], encoder: options(defs, 'CLIPLoader', 'clip_name')[0], vae: options(defs, 'VAELoader', 'vae_name')[0] };
 const graphs = [];
+const invalid = { ...cfg, black: 1, white: 0, gamma: 0.18, gradation: 1.63 };
+const corrected = normalizeMangaConfig({ ...invalid }, mangaControlRanges(defs));
+assert.equal(corrected.black, 0.9);
+assert.equal(corrected.white, 0.1);
+assert.equal(corrected.gamma, 0.3);
+assert.equal(corrected.gradation, 1);
+const repaired = Object.values(buildMangaPrompt(defs, invalid, 'art.png').graph);
+assert.equal(repaired.find(n => n.class_type === 'MangaLevels').inputs.gamma, 0.3);
+assert.equal(repaired.find(n => n.class_type === 'MangaFinish').inputs.gradation, 1);
+assert.equal(invalid.gradation, 1.63, 'Building a prompt does not mutate saved settings');
+const updatedDefs = { ...defs, MangaLevels: { input: { required: { gamma: ['FLOAT', { min: 0.5, max: 2 }] } } } };
+assert.deepEqual(mangaControlRanges(updatedDefs).gamma, [0.5, 2], 'Controls follow installed node limits');
+for (const bound of [0, 1]) {
+    const ranges = mangaControlRanges(defs);
+    const settings = { ...cfg, ...Object.fromEntries(Object.entries(ranges).map(([key, range]) => [key, range[bound]])) };
+    const nodes = Object.values(buildMangaPrompt(defs, settings, 'art.png').graph);
+    for (const node of nodes) for (const [key, value] of Object.entries(node.inputs)) {
+        const limits = defs[node.class_type]?.input?.required?.[key]?.[1];
+        if (typeof value === 'number' && limits && typeof limits === 'object') {
+            if (limits.min !== undefined) assert(value >= limits.min, `${node.class_type}.${key} below minimum`);
+            if (limits.max !== undefined) assert(value <= limits.max, `${node.class_type}.${key} above maximum`);
+        }
+    }
+}
 for (const mode of ['lite', 'qwen']) for (const pen_lines of [false, true]) {
     const built = buildMangaPrompt(defs, { ...cfg, mode, pen_lines }, 'art.png');
     const nodes = Object.values(built.graph);

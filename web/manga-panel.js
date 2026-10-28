@@ -2,11 +2,8 @@ import { api } from '../../scripts/api.js';
 import { el, field } from './client.js';
 import { options } from './prompts.js';
 
-import { mangaDefaults } from './manga-prompt.js';
+import { mangaDefaults, mangaControlRanges, normalizeMangaConfig } from './manga-prompt.js';
 import { slider, toggle, seed } from './controls.js';
-
-const ranges = { megapixels: [0.25, 8], black: [0, 1], white: [0, 1], gamma: [0.1, 3], screen_lines: [60, 400], white_point: [0, 1], black_point: [0, 1], light_tone: [0, 1], dark_tone: [0, 1],
-    gradation: [0, 3], white_lines: [0, 1], pen_threshold: [0, 1], resolution: [512, 2048], crop_x: [0, 1], crop_y: [0, 1], border: [0, 40], margin: [0, 200], ink: [0, 1] };
 
 export function mangaControls(studio, kind, changed) {
     const scope = `manga_${kind}`, existing = studio.project.config[`${scope}:qwen`];
@@ -14,15 +11,22 @@ export function mangaControls(studio, kind, changed) {
     if (!existing) { Object.assign(cfg, structuredClone(mangaDefaults), { seed: 1, random_seed: false }); studio.saveSoon(); }
     const element = el('div');
     function render() {
+        const ranges = mangaControlRanges(studio.defs), before = JSON.stringify(cfg);
+        normalizeMangaConfig(cfg, ranges);
+        if (JSON.stringify(cfg) !== before) studio.saveSoon();
         element.replaceChildren();
         const update = () => { changed(); studio.presetChanged(scope, element); };
-        const presets = el('div', { class: 'mm-row' }); studio.presets(presets, scope, cfg, {}, () => { changed(); render(); }); element.append(presets);
+        const presets = el('div', { class: 'mm-row' }); studio.presets(presets, scope, cfg, {}, () => { render(); changed(); }); element.append(presets);
         const select = (label, key, values, rerender = false) => {
             const input = el('select', { 'aria-label': label, onchange: e => { cfg[key] = e.target.value; update(); if (rerender) render(); } }, ...values.map(([value, text]) => el('option', { value, text })));
             input.value = cfg[key]; return field(label, input);
         };
         const number = (label, key, step = 0.01) => {
-            const control = slider(label, el('input', { type: 'number', 'aria-label': label, value: cfg[key], step, onchange: e => { cfg[key] = Number(e.target.value); update(); } }), ranges[key]);
+            const [min, max] = ranges[key];
+            const control = slider(label, el('input', { type: 'number', 'aria-label': label, value: cfg[key], min, max, step, onchange: e => {
+                cfg[key] = e.target.value === '' ? mangaDefaults[key] : Number(e.target.value);
+                normalizeMangaConfig(cfg, ranges); e.target.value = cfg[key]; update();
+            } }), ranges[key]);
             // Dragging updates the live preview; releasing the slider commits the change as before.
             control.querySelector('input[type=range]').addEventListener('input', e => { cfg[key] = Number(e.target.value); changed(); });
             return control;

@@ -1,5 +1,35 @@
 import { options } from './prompts.js';
 
+const mangaRanges = {
+    megapixels: [0.25, 8], black: [0, 0.9], white: [0.1, 1], gamma: [0.3, 3], screen_lines: [40, 600],
+    white_point: [0.3, 1], black_point: [0, 0.7], light_tone: [0.02, 0.9], dark_tone: [0.02, 0.95],
+    gradation: [0, 1], white_lines: [0, 1], pen_threshold: [0.05, 0.95], resolution: [512, 2048],
+    crop_x: [0, 1], crop_y: [0, 1], border: [0, 40], margin: [0, 400], ink: [0, 1],
+};
+const numericNodes = {
+    ImageScaleToTotalPixels: ['megapixels'], MangaLevels: ['black', 'white', 'gamma'],
+    MangaFinish: ['screen_lines', 'white_point', 'black_point', 'light_tone', 'dark_tone', 'gradation', 'pen_threshold', 'white_lines'],
+    MangaPanel: ['crop_x', 'crop_y', 'border', 'margin', 'ink'], Manga2Anime_LineArt_Preprocessor: ['resolution'],
+};
+
+export function mangaControlRanges(defs) {
+    const ranges = { ...mangaRanges };
+    for (const [node, keys] of Object.entries(numericNodes)) for (const key of keys) {
+        const spec = defs[node]?.input;
+        const limits = (spec?.required?.[key] ?? spec?.optional?.[key])?.[1];
+        ranges[key] = [limits?.min ?? ranges[key][0], limits?.max ?? ranges[key][1]];
+    }
+    return ranges;
+}
+
+export function normalizeMangaConfig(cfg, ranges) {
+    for (const [key, [min, max]] of Object.entries(ranges)) {
+        const value = Number(cfg[key]);
+        cfg[key] = Math.max(min, Math.min(max, Number.isFinite(value) ? value : mangaDefaults[key]));
+    }
+    return cfg;
+}
+
 export const mangaDefaults = {
     mode: 'lite', pen_lines: false, resolution: 1280, megapixels: 2,
     black: 0.2, white: 0.7, gamma: 1.3, screen_lines: 250, white_point: 0.8, black_point: 0.3,
@@ -10,6 +40,7 @@ export const mangaDefaults = {
 };
 
 export function buildMangaPrompt(defs, cfg, imagePath) {
+    cfg = normalizeMangaConfig({ ...cfg }, mangaControlRanges(defs));
     const graph = {}; let count = 0;
     const add = (type, inputs) => {
         if (!defs[type]) throw new Error(`Missing node ${type}. Install or enable ${type.startsWith('Manga2') ? 'comfyui_controlnet_aux' : type.startsWith('Manga') ? 'ComfyUI-MangaScreen' : 'its dependency'} and refresh the lists.`);
