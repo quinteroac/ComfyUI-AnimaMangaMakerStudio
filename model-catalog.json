@@ -103,6 +103,27 @@
         "sampler": "er_sde",
         "scheduler": "simple"
       }
+    },
+    "anima_edit": {
+      "name": "Anima Ref Adapter \u00b7 PAG",
+      "artifacts": [],
+      "local": true,
+      "workflow": "anima_ref_adapter_pag_multi.json",
+      "settings": {
+        "model": "anima/anima-turbo-v1.0-int8-convrot.safetensors",
+        "encoder": "qwen_3_06b_base.safetensors",
+        "vae": "qwen_image_vae.safetensors",
+        "encoder_type": "stable_diffusion",
+        "weight_dtype": "default",
+        "encoder_device": "default",
+        "ref_adapter_lora": "anima_ref_adapter_pilot_r32.safetensors",
+        "steps": 8,
+        "cfg": 1,
+        "ref_guidance": 1,
+        "pag_scale": 1.3,
+        "sampler": "euler",
+        "scheduler": "simple"
+      }
     }
   },
   "artifacts": [

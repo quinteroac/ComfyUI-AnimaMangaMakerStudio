@@ -122,5 +122,25 @@ assert.deepEqual(transformRect({ x: 60, y: 70, width: 10, height: 10 }, resize, 
 assert.deepEqual(transformRect({ x: 900, y: 0, width: 100, height: 10 }, { a: 1, b: 0, c: 0, d: 1, e: 50, f: -5 }, { width: 1000, height: 500 }), { x: 950, y: 0, width: 50, height: 5 });
 const plain = buildPrompt(defs, 'bbox', 'anima', inheritModels({ ...initialSettings('anima'), prompt: 'x', boxes: [], alpha: 'lora' }, settings.models.anima, 'anima'), [], 'alpha');
 assert(!Object.values(plain.graph).some(n => ['JoinImageWithAlpha', 'VNCCSChromaKey', 'RGBAVAELoader'].includes(n.class_type)));
+// Anima Ref follows anima_ref_adapter_pag_multi: references stitched into one image, adapter guider and Safe PAG.
+const animaRef = inheritModels({ ...initialSettings('anima_edit'), prompt: '1girl, solo, smile, beach', aspect_ratio: '3:4' }, settings.models.anima_edit, 'anima_edit');
+for (const key of [['model', 'UNETLoader', 'unet_name'], ['encoder', 'CLIPLoader', 'clip_name'], ['vae', 'VAELoader', 'vae_name'], ['ref_adapter_lora', 'AnimaRefAdapterLoader', 'lora_name']]) {
+    if (!options(defs, key[1], key[2]).includes(animaRef[key[0]])) animaRef[key[0]] = options(defs, key[1], key[2])[0];
+}
+assert.throws(() => buildPrompt(defs, 'panels', 'anima_edit', animaRef, [], 'anima-ref'), /at least one reference/);
+for (const [op, images] of [['references', ['a.png']], ['panels', ['a.png', 'b.png', 'c.png']], ['sketch', ['sketch.png']]]) {
+    const built = buildPrompt(defs, op, 'anima_edit', { ...animaRef, pag_scale: op === 'references' ? 0 : 1.3, alpha: op === 'panels' ? 'chromakey' : '' }, images, `anima-ref-${op}`);
+    const nodes = Object.values(built.graph), node = type => nodes.find(n => n.class_type === type);
+    assert.equal(nodes.filter(n => n.class_type === 'ImageStitch').length, images.length - 1);
+    assert.equal(!!node('AnimaSafePAG'), op !== 'references');
+    assert.equal(!!node('VNCCSChromaKey'), op === 'panels');
+    const latent = node('AnimaRefLatent').inputs, sigmas = node('BasicScheduler').inputs;
+    assert.equal(latent.width % 16, 0); assert(latent.width < latent.height);
+    assert.equal(sigmas.denoise, op === 'sketch' ? animaRef.denoise : 1);
+    assert.equal(node('AnimaRefGuider').inputs.ref_guidance, 1);
+    assert.equal(built.graph[node('SamplerCustomAdvanced').inputs.latent_image[0]].class_type, op === 'sketch' ? 'VAEEncode' : 'AnimaRefLatent');
+    assert.equal(built.graph[built.outputNode].class_type, op === 'sketch' ? 'PreviewImage' : 'SaveImage');
+    jobs.push({ engine: 'anima_edit', op, count: images.length, ...built });
+}
 fs.writeFileSync('/tmp/manga-generation-engines-graphs.json', JSON.stringify(jobs));
 console.log(`${jobs.length} Moss/Anima graphs passed: workflow sampling, conditioning, latent types, LoRA order, overrides, bbox layout prompts for every text-to-image engine and model errors.`);

@@ -11,7 +11,7 @@ import { StoryStudio } from './story.js';
 import { assistantSettings } from './assistant.js';
 
 const spaces = { story: 'Story', references: 'References', panels: 'Panels', refine: 'Refinement', design: 'Page layout', finish: 'Finishing' };
-const engines = { krea: 'Krea2', krea_edit: 'Krea2 Edit', qwen: 'Qwen Image 2.1', moss: 'moss', anima: 'anima' };
+const engines = { krea: 'Krea2', krea_edit: 'Krea2 Edit', qwen: 'Qwen Image 2.1', moss: 'moss', anima: 'anima', anima_edit: 'Anima Ref' };
 const textTasks = { enhance: 'Enhance section', describe: 'Create reference prompt' };
 const clone = x => structuredClone(x);
 
@@ -221,6 +221,14 @@ export class Studio {
                 field('Grounding system prompt · optional', el('textarea', { value: cfg.grounding_system_prompt || '', oninput: e => set('grounding_system_prompt')(e.target.value) })));
             if (space !== 'refine') technical.append(edit);
         }
+        if (engine === 'anima_edit') {
+            const adapter = el('details', {}, el('summary', { text: 'Anima reference adapter' }),
+                combo('Ref Adapter LoRA', options(this.defs, 'AnimaRefAdapterLoader', 'lora_name'), cfg.ref_adapter_lora, set('ref_adapter_lora')));
+            for (const [label, key, step, range] of [['Reference guidance', 'ref_guidance', 0.1, [0, 10]], ['Safe PAG scale · 0 disables', 'pag_scale', 0.1, [0, 5]]]) {
+                adapter.append(slider(label, el('input', { type: 'number', value: cfg[key], step, onchange: e => set(key)(Number(e.target.value)) }), range));
+            }
+            technical.append(adapter);
+        }
         technical.append(combo('Weight precision', options(this.defs, 'UNETLoader', 'weight_dtype'), cfg.weight_dtype, set('weight_dtype')),
             combo('Encoder device', options(this.defs, 'CLIPLoader', 'device'), cfg.encoder_device, set('encoder_device')));
         if (this.defs.ModelAttentionBackend) technical.append(combo(engine === 'qwen' ? 'Attention · leave empty for ComfyUI default' : 'Attention backend', options(this.defs, 'ModelAttentionBackend', 'attention'), cfg.attention || defaultAttention(this.defs, engine), set('attention')));
@@ -293,7 +301,7 @@ export class Studio {
                     iconButton('Remove', 'trash', () => { cfg.loras.splice(index, 1); changed(); refresh(); })),
                 combo('LoRA file', options(this.defs, 'LoraLoader', 'lora_name'), l.name, value => { l.name = value; changed(); }),
                 slider('Model strength', el('input', { type: 'number', value: l.model, step: 0.05, onchange: e => { l.model = Number(e.target.value); changed(); } }), [0, 2]),
-                ['krea_edit', 'moss', 'anima'].some(engine => scope.endsWith(`:${engine}`)) ? null : slider('Encoder strength', el('input', { type: 'number', value: l.clip, step: 0.05, onchange: e => { l.clip = Number(e.target.value); changed(); } }), [0, 2]))));
+                ['krea_edit', 'moss', 'anima', 'anima_edit'].some(engine => scope.endsWith(`:${engine}`)) ? null : slider('Encoder strength', el('input', { type: 'number', value: l.clip, step: 0.05, onchange: e => { l.clip = Number(e.target.value); changed(); } }), [0, 2]))));
         }; refresh();
         details.append(rows, iconButton('Add LoRA', 'plus', () => { cfg.loras.push({ enabled: true, name: '', model: 1, clip: 1 }); changed(); refresh(); }, {}, true), el('div', { class: 'mm-row' },
             button('Save LoRA preset', () => this.ask('LoRA preset name', '', name => { const key = scope; (presetStore[key] ||= {})[`LoRAs · ${name}`] = { loras: clone(cfg.loras) }; this.saveSoon(); })),
@@ -313,20 +321,20 @@ export class Studio {
         const describe = () => summarize(group, `${cfg.steps} steps · ${cfg.sampler || 'no sampler'}`);
         const set = (key, value) => { cfg[key] = value; if (!global && modelFields.includes(key)) (cfg.model_overrides ||= {})[key] = value; describe(); changed(); };
         describe();
-        for (const [label, key, step, range] of [['Steps', 'steps', 1, [1, 50]], ...(['qwen', 'krea_edit', 'moss', 'anima'].includes(engine) ? [['CFG', 'cfg', 0.1, [0, 10]]] : []), ...(engine === 'krea' && space === 'refine' ? [['Denoise', 'denoise', 0.01, [0, 1]]] : [])]) {
+        for (const [label, key, step, range] of [['Steps', 'steps', 1, [1, 50]], ...(['qwen', 'krea_edit', 'moss', 'anima', 'anima_edit'].includes(engine) ? [['CFG', 'cfg', 0.1, [0, 10]]] : []), ...(engine === 'krea' && space === 'refine' ? [['Denoise', 'denoise', 0.01, [0, 1]]] : [])]) {
             group.append(slider(label, el('input', { type: 'number', value: cfg[key], step, onchange: e => set(key, Number(e.target.value)) }), range));
         }
         if (engine === 'krea' || engine === 'krea_edit') group.append(field('Shift', el('input', { type: 'number', 'aria-label': 'Shift', value: cfg.shift ?? '', step: 0.01,
             placeholder: 'Model default', onchange: e => { const value = e.target.value; if (!value || Number.isFinite(Number(value))) set('shift', value === '' ? '' : Number(value)); } }),
             'Empty uses the model default, or the global Shift when configured.'));
-        if (engine === 'krea_edit' && !global) {
+        if ((engine === 'krea_edit' || (engine === 'anima_edit' && space === 'sketch')) && !global) {
             const denoise = slider('Denoise', el('input', { type: 'number', 'aria-label': 'Denoise', value: cfg.denoise, min: 0, max: 1, step: 0.05,
                 onchange: e => { const value = Number(e.target.value); if (Number.isFinite(value)) set('denoise', value); } }), [0, 1], 'Lower values preserve more of the initial latent image.');
             denoise.classList.add('mm-edit-denoise'); denoise.hidden = space !== 'sketch' && !cfg.latent_reference; group.append(denoise);
         }
         group.append(combo('Sampler', options(this.defs, 'KSampler', 'sampler_name'), cfg.sampler, value => set('sampler', value)),
             combo('Scheduler', options(this.defs, 'KSampler', 'scheduler'), cfg.scheduler, value => set('scheduler', value)));
-        if (['qwen', 'anima'].includes(engine) && !global) group.append(field('Negative prompt', el('textarea', { value: cfg.negative, oninput: e => { cfg.negative = e.target.value; changed(); } })));
+        if (['qwen', 'anima', 'anima_edit'].includes(engine) && !global) group.append(field('Negative prompt', el('textarea', { value: cfg.negative, oninput: e => { cfg.negative = e.target.value; changed(); } })));
         host.append(group);
     }
     alphaControls(host, cfg, engine, changed) {
@@ -381,7 +389,7 @@ export class Studio {
     engineSelect(host, space) {
         const state = this.state(space);
         const select = el('select', { 'aria-label': 'Engine', onchange: e => { state.engine = e.target.value; this.saveSoon(); this.rebuild(space); } }, el('option', { value: 'krea', text: 'Krea2' }),
-            ...(['references', 'panels'].includes(space) ? [el('option', { value: 'krea_edit', text: 'Krea2 · edit' }), ...['moss', 'anima'].map(value => el('option', { value, text: engines[value] }))] : []), el('option', { value: 'qwen', text: 'Qwen Image 2.1' })); select.value = state.engine;
+            ...(['references', 'panels'].includes(space) ? [el('option', { value: 'krea_edit', text: 'Krea2 · edit' }), ...['moss', 'anima', 'anima_edit'].map(value => el('option', { value, text: engines[value] }))] : []), el('option', { value: 'qwen', text: 'Qwen Image 2.1' })); select.value = state.engine;
         host.append(field('Engine', select));
     }
     essentials(host, cfg, space, editing = false) {
@@ -523,7 +531,8 @@ export class Studio {
                 refresh(); update(); this.jobs();
             }))); update(); this.modal('Connect references', picker);
         }, {}, true));
-        box.append(el('small', { text: cfg.engine === 'qwen' ? 'Qwen: images are connected to the vision encoder and VAE. Inherit the size of the first reference or set AR and MP manually.' : 'Krea2 Edit: connect one to four references in order. For scene/subject edits, place the scene first and the subject last. Use compatible editing models and LoRAs.' }));
+        box.append(el('small', { text: cfg.engine === 'qwen' ? 'Qwen: images are connected to the vision encoder and VAE. Inherit the size of the first reference or set AR and MP manually.'
+            : cfg.engine === 'anima_edit' ? 'Anima Ref: connect one to four references; they are placed side by side as one reference. Character and style come from them, so describe only the scene, pose and framing in the prompt.' : 'Krea2 Edit: connect one to four references in order. For scene/subject edits, place the scene first and the subject last. Use compatible editing models and LoRAs.' }));
         slot.append(box);
     }
     assetPickerItem(a, action) { const b = button('', action, { 'data-asset-id': a.id }); b.append(el('img', { src: assetUrl(this.project.id, a.id, true), alt: a.name, loading: 'lazy' }), el('span', { text: `${a.name} · ${a.kind}` })); return b; }
@@ -659,6 +668,10 @@ export class Studio {
                     if (['references', 'panels'].includes(a.kind)) addAction('Draw with Klecks', 'pencil', () => openDrawing(this, a.kind, a));
                     if (['references', 'panels'].includes(a.kind)) addAction('Edit with Krea2', 'pencil', () => {
                         this.state(a.kind).engine = 'krea_edit'; this.config(a.kind, 'krea_edit').references = [a.id];
+                        this.rebuild(a.kind); this.switch(a.kind); this.saveSoon();
+                    });
+                    if (['references', 'panels'].includes(a.kind)) addAction('Use with Anima Ref', 'link', () => {
+                        this.state(a.kind).engine = 'anima_edit'; this.config(a.kind, 'anima_edit').references = [a.id];
                         this.rebuild(a.kind); this.switch(a.kind); this.saveSoon();
                     });
                     if (space === 'design') addAction('Place', 'place', () => { if (!this.editor?.panel) this.editor.addPanel(); this.editor.change(() => this.editor.panel.asset = a.id); this.editor.loadImages(); });
@@ -949,7 +962,7 @@ export class Studio {
                 { 'data-cancel-job': j.id, title: j.state === 'running' ? 'Cancel running generation' : 'Cancel queued generation', disabled: !!j.cancel_requested || this.busy.has(`cancel:${this.project.id}:${j.id}`) }) : null,
                 j.state === 'running' ? el('progress', { max: this.progress.get(j.id)?.max || 1, ...(this.progress.has(j.id) ? { value: this.progress.get(j.id).value } : {}) }) : null)));
         for (const b of this.dialog.querySelectorAll('[data-run]')) {
-            const run = b.dataset.run, references = ['references', 'panels'].includes(run) && this.state(run).engine === 'krea_edit' ? this.config(run).references.length : null;
+            const run = b.dataset.run, references = ['references', 'panels'].includes(run) && ['krea_edit', 'anima_edit'].includes(this.state(run).engine) ? this.config(run).references.length : null;
             const reason = this.busy.has(`${this.project.id}:${run}`) ? 'Submitting…'
                 : references !== null && (references < 1 || references > 4) ? 'Connect one to four references to edit.'
                 : run in textTasks && !this.textGeneratorAvailable() ? 'Configure the global text generator in Settings.'

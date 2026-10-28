@@ -129,12 +129,12 @@ export function options(defs, node, field) {
 }
 
 export function defaultAttention(defs, engine) {
-    if (engine !== 'krea' && engine !== 'krea_edit') return '';
+    if (!['krea', 'krea_edit', 'anima_edit'].includes(engine)) return '';
     return options(defs, 'ModelAttentionBackend', 'attention').includes('comfy kitchen attention') ? 'comfy kitchen attention' : 'pytorch attention';
 }
 
 // Qwen Image 2.1 decodes RGBA with its own VAE; MOSS and Krea2 need an alpha LoRA with alpha VAEs, or a chroma key over a flat background.
-export const alphaMethods = { moss: ['lora', 'chromakey'], krea: ['lora', 'chromakey'], krea_edit: ['lora', 'chromakey'], qwen: ['native'] };
+export const alphaMethods = { moss: ['lora', 'chromakey'], krea: ['lora', 'chromakey'], krea_edit: ['lora', 'chromakey'], anima_edit: ['chromakey'], qwen: ['native'] };
 const alphaBackground = {
     lora: 'Isolated on a transparent background.', native: 'Isolated on a transparent background.',
     chromakey: 'Isolated on a completely flat, uniform, solid dark indigo purple background (hex #1E0050) with no gradient, no shadow and no texture.',
@@ -166,6 +166,8 @@ export const initialSettings = (engine) => ({
     ...(['moss', 'anima'].includes(engine) ? { steps: 8, sampler: 'er_sde', scheduler: 'simple',
         encoder_type: engine === 'moss' ? 'moss_image' : 'qwen_image', accelerator_lora: engine === 'moss' ? 'moss/lora.safetensors' : '',
         negative: engine === 'anima' ? 'score_6, score_5, score_4, worst quality, low quality, text, censored, deformed, bad hand, blurry, (watermark),' : '' } : {}),
+    ...(engine === 'anima_edit' ? { steps: 8, sampler: 'euler', scheduler: 'simple', encoder_type: 'stable_diffusion', ref_adapter_lora: 'anima_ref_adapter_pilot_r32.safetensors', ref_guidance: 1, pag_scale: 1.3,
+        negative: 'worst quality, low quality, score_1, score_2, score_3, blurry, jpeg artifacts, chromatic aberration, bad anatomy, bad hands, extra arms, extra fingers, missing fingers, text, watermark, signature, artist name, multiple views, split screen, comic, 2koma, 4koma' } : {}),
 });
 
 // Matches the Export node of github.com/ukr8b3g-cmyk/Krea2-BBOX-Prompter with its defaults: [x1, y1, x2, y2] per mille,
@@ -264,6 +266,35 @@ export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) 
             metadata: { type: box.type === 'text' ? 'text' : 'obj', text: box.type === 'text' ? box.text || '' : '', desc: box.desc || '', palette: [] } })) } });
         text = add('MOSSImageLayoutPrompt', { prompt, element: [boxes[0], 2], ...size,
             character_boxes: config.boxes.flatMap((box, i) => box.type === 'character' ? [i + 1] : []).join(', ') });
+    }
+    if (engine === 'anima_edit') {
+        // Follows the anima_ref_adapter_pag_multi workflow: the references take character and style, the prompt gives the scene.
+        if (!images.length) throw new Error('Anima Ref Adapter requires at least one reference image.');
+        let model = add('UNETLoader', { unet_name: check('UNETLoader', 'unet_name', config.model, 'Model'), weight_dtype: config.weight_dtype });
+        const clip = load(config.encoder, config.encoder_type);
+        const vae = add('VAELoader', { vae_name: check('VAELoader', 'vae_name', config.vae, 'VAE') });
+        model = add('AnimaRefAdapterLoader', { model, lora_name: check('AnimaRefAdapterLoader', 'lora_name', config.ref_adapter_lora, 'Ref Adapter LoRA'), strength: 1, ref_offset_h: 1 });
+        for (const lora of config.loras.filter(l => l.enabled)) {
+            model = add('LoraLoaderModelOnly', { model, lora_name: check('LoraLoaderModelOnly', 'lora_name', lora.name, 'LoRA'), strength_model: Number(lora.model) });
+        }
+        model = add('ModelComputeDtype', { model, dtype: 'bf16' });
+        const attention = config.attention || defaultAttention(defs, engine);
+        if (attention) model = add('ModelAttentionBackend', { model, attention: check('ModelAttentionBackend', 'attention', attention, 'Attention') });
+        if (Number(config.pag_scale)) model = add('AnimaSafePAG', { model, scale: Number(config.pag_scale), block_indices: '18', perturbation_strength: 0.75, head_indices: '',
+            start_percent: 0.3, end_percent: 0.8, rescale: 0.2, rescale_mode: 'full' });
+        // The adapter reads one reference image, so several references are placed side by side.
+        const reference = images.slice(1).reduce((image1, image2) => add('ImageStitch', { image1, image2, direction: 'right', match_image_size: true, spacing_width: 0, spacing_color: 'white' }), images[0]);
+        const encoded = add('AnimaRefLatent', { image: reference, vae, ...imageDimensions(config, 16), fill: 255 });
+        const positive = add('CLIPTextEncode', { clip, text: prompt }), negative = add('CLIPTextEncode', { clip, text: config.negative });
+        const guider = add('AnimaRefGuider', { model, positive, negative, ref_latent: encoded, cfg: Number(config.cfg), ref_guidance: Number(config.ref_guidance ?? 1), correction: 'apg', rescale_phi: 0.5 });
+        // Sketch to Art also starts from the drawing, letterboxed to the reference latent size.
+        const sketching = operation === 'sketch';
+        const latent = sketching ? add('VAEEncode', { pixels: [encoded[0], 2], vae }) : [encoded[0], 1];
+        const sigmas = add('BasicScheduler', { model, scheduler: config.scheduler, steps: Number(config.steps), denoise: sketching ? Number(config.denoise ?? 0.6) : 1 });
+        const sampled = add('SamplerCustomAdvanced', { noise: add('RandomNoise', { noise_seed: Number(config.seed) }), guider, sampler: add('KSamplerSelect', { sampler_name: config.sampler }), sigmas, latent_image: latent });
+        const decoded = decode(sampled, vae);
+        const output = sketching ? add('PreviewImage', { images: decoded }) : add('SaveImage', { images: decoded, filename_prefix: `manga-maker/${jobId}/result` });
+        return { graph, outputNode: output[0] };
     }
     if (engine === 'moss' || engine === 'anima') {
         if (imagePaths.length) throw new Error('This workflow generates from text. Use an editing engine to connect visual references.');

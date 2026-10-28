@@ -9,22 +9,31 @@ import { buildMangaPrompt } from './manga-prompt.js';
 import { bboxControls } from './bbox-panel.js';
 
 export function sketchControls(studio, kind, project, send, busyChanged) {
-    const scope = `sketch_${kind}`; const existing = studio.project.config[`${scope}:krea_edit`];
-    const cfg = studio.config(scope, 'krea_edit'); cfg.engine = 'krea_edit';
-    if (!existing) {
-        Object.assign(cfg.model_overrides, { steps: 1, cfg: 1, sampler: 'euler', scheduler: 'simple', shift: 1.15, grounding_px: 0 });
-        Object.assign(cfg, { denoise: 0.3, seed: 0, random_seed: false, region_mode: 'canvas', feather: 16, blend_opacity: 100 });
+    const scope = `sketch_${kind}`, sketchState = studio.state(scope);
+    // Sketch to Art runs Krea2 Edit, or the Anima Ref Adapter with the drawing as its reference.
+    if (sketchState.engine !== 'anima_edit') sketchState.engine = 'krea_edit';
+    const sketchConfig = engine => {
+        const existing = studio.project.config[`${scope}:${engine}`];
+        const cfg = studio.config(scope, engine); cfg.engine = engine;
+        if (existing) return cfg;
+        const krea = engine === 'krea_edit';
+        if (krea) Object.assign(cfg.model_overrides, { steps: 1, cfg: 1, sampler: 'euler', scheduler: 'simple', shift: 1.15, grounding_px: 0 });
+        Object.assign(cfg, { denoise: krea ? 0.3 : 0.6, seed: 0, random_seed: false, region_mode: 'canvas', feather: 16, blend_opacity: 100 });
         const sourcePrompt = studio.config(kind);
         cfg.prompt = sourcePrompt.prompt || '';
-        cfg.prompt_sections = { ...structuredClone(sourcePrompt.prompt_sections || {}), task: 'IMAGE_EDIT' };
+        cfg.prompt_sections = { ...structuredClone(sourcePrompt.prompt_sections || {}), ...(krea ? { task: 'IMAGE_EDIT' } : {}) };
         cfg.prompt_sections.composition ||= 'Preserve the sketch composition, pose, proportions and intended shapes.';
         cfg.prompt_sections.style ||= kind === 'references' ? 'Neutral full-color illustration with clean details and consistent rendering.' : 'Finished manga illustration with clean, expressive linework and consistent shading.';
-        const installed = options(studio.defs, 'LoraLoaderModelOnly', 'lora_name');
-        cfg.loras = ['krea2/krea2_turbo_2step_rank_64_lora_comfyui.safetensors', 'krea2/sketch_krea_2_identity_edit_r64_512_continue_8000.safetensors'].map(name => ({
-            name: installed.find(path => path.split('/').at(-1) === name.split('/').at(-1)) || name, enabled: true, model: 1, clip: 0,
-        }));
-        inheritModels(cfg, studio.settings.models.krea_edit, 'krea_edit'); studio.saveSoon();
-    }
+        if (krea) {
+            const installed = options(studio.defs, 'LoraLoaderModelOnly', 'lora_name');
+            cfg.loras = ['krea2/krea2_turbo_2step_rank_64_lora_comfyui.safetensors', 'krea2/sketch_krea_2_identity_edit_r64_512_continue_8000.safetensors'].map(name => ({
+                name: installed.find(path => path.split('/').at(-1) === name.split('/').at(-1)) || name, enabled: true, model: 1, clip: 0,
+            }));
+        }
+        inheritModels(cfg, studio.settings.models[engine], engine); studio.saveSoon();
+        return cfg;
+    };
+    let cfg = sketchConfig(sketchState.engine);
     let ready = false, disposed = false, revision = 0, active = null, job = null, pending = false, stopping = false, polling = false;
     let wakePoll, completionNotified = false;
     const abort = new AbortController();
@@ -72,7 +81,12 @@ export function sketchControls(studio, kind, project, send, busyChanged) {
     const transparency = el('div');
     const sampling = el('div');
     const models = el('div');
-    const renderModels = () => { models.replaceChildren(); studio.modelControls(models, cfg, 'krea_edit', changed, false, 'sketch', renderModels); };
+    const renderModels = () => { models.replaceChildren(); studio.modelControls(models, cfg, cfg.engine, changed, false, 'sketch', renderModels); };
+    const sketchEngine = segmented('Sketch engine', [['krea_edit', 'Krea2 Edit'], ['anima_edit', 'Anima Ref']], cfg.engine, value => {
+        const previous = cfg; cfg = sketchConfig(value); sketchState.engine = value;
+        for (const key of ['region_mode', 'region', 'feather', 'blend_opacity']) cfg[key] = structuredClone(previous[key]);
+        revision++; studio.saveSoon(); renderSettings(); paintPreview();
+    });
     function renderSettings() {
         presets.replaceChildren(); studio.presets(presets, scope, cfg, {}, () => { revision++; renderSettings(); paintPreview(); });
         regionMode.value = cfg.region_mode || 'canvas';
@@ -82,8 +96,8 @@ export function sketchControls(studio, kind, project, send, busyChanged) {
         for (const [key, label, range] of [['feather', 'Edge feather · px', [0, 128]], ['blend_opacity', 'Blend opacity · %', [0, 100]]]) blend.append(slider(label,
             el('input', { type: 'number', 'aria-label': label, value: cfg[key] ?? (key === 'feather' ? 16 : 100), step: 1, onchange: event => { cfg[key] = Number(event.target.value); changed(); } }), range));
         prompt.replaceChildren(el('summary', { text: 'Prompt' })); studio.promptControls(prompt, cfg, changed, true);
-        transparency.replaceChildren(); studio.alphaControls(transparency, cfg, 'krea_edit', changed);
-        sampling.replaceChildren(); studio.samplingControls(sampling, cfg, 'krea_edit', changed, 'sketch');
+        transparency.replaceChildren(); studio.alphaControls(transparency, cfg, cfg.engine, changed);
+        sampling.replaceChildren(); studio.samplingControls(sampling, cfg, cfg.engine, changed, 'sketch');
         sampling.append(seed('Seed', cfg, changed));
         renderModels();
     }
@@ -109,7 +123,7 @@ export function sketchControls(studio, kind, project, send, busyChanged) {
         regionControls.hidden = mode === 'bbox'; paintPreview(); if (mode === 'bbox') bbox.sync();
         status.textContent = hints[mode];
     });
-    const sketchSettings = el('div', {}, presets, blend, prompt, transparency, sampling, models, toggle('Realtime on stroke release', realtime));
+    const sketchSettings = el('div', {}, sketchEngine, presets, blend, prompt, transparency, sampling, models, toggle('Realtime on stroke release', realtime));
     const workflowSettings = el('div', {}, sketchSettings);
     const regionControls = el('div', {}, regionMode, el('small', { id: 'mm-sketch-region-help', text: 'Drag with the left mouse button on the preview to select the generation region. Choose Whole canvas to reset.' }), canvas, coordinates, preview, maskControls);
     const element = el('aside', { class: 'mm-sketch-controls', 'aria-label': 'Sketch to Art controls' }, tool, heading,
@@ -193,7 +207,7 @@ export function sketchControls(studio, kind, project, send, busyChanged) {
         if (disposed || !ready) return;
         if (active) { pending = true; return; }
         stopping = false; pending = false; active = { token: uuid(), revision, mode, name: title(), operation: mode,
-            engine: { sketch: 'krea_edit', manga: manga.cfg.mode === 'qwen' ? 'qwen' : 'manga_lite', bbox: bbox.cfg.engine }[mode],
+            engine: { sketch: cfg.engine, manga: manga.cfg.mode === 'qwen' ? 'qwen' : 'manga_lite', bbox: bbox.cfg.engine }[mode],
             settings: structuredClone({ sketch: cfg, manga: { ...manga.cfg, feather: 0, blend_opacity: 100 }, bbox: { ...bbox.cfg, boxes: bbox.boxes, feather: 0, blend_opacity: 100 } }[mode]) };
         status.textContent = 'Capturing drawing…'; update(); send('manga-drawing-snapshot', { token: active.token });
     }
@@ -276,7 +290,7 @@ export function sketchControls(studio, kind, project, send, busyChanged) {
                 if (!response.ok) throw new Error(uploaded.error || 'Could not stage the drawing region.');
                 if (stopping || disposed || ticket.revision !== revision) { finish('Drawing changed · Waiting for the latest stroke.'); return; }
                 const imagePath = `${uploaded.subfolder ? uploaded.subfolder + '/' : ''}${uploaded.name} [${uploaded.type}]`;
-                built = ticket.mode === 'manga' ? buildMangaPrompt(studio.defs, settings, imagePath) : buildPrompt(studio.defs, 'sketch', 'krea_edit', settings, [imagePath], ticket.token);
+                built = ticket.mode === 'manga' ? buildMangaPrompt(studio.defs, settings, imagePath) : buildPrompt(studio.defs, 'sketch', ticket.engine, ticket.engine === 'anima_edit' ? { ...settings, aspect_ratio: `${r.width}:${r.height}` } : settings, [imagePath], ticket.token);
             }
             job = await request(`/projects/${project}/jobs`, { id: ticket.token, operation: ticket.operation, engine: ticket.engine, kind, space: kind,
                 name: ticket.name, settings: { ...settings, region: r }, prompt: built.graph, output_node: built.outputNode, sources: [] }, 'POST');
