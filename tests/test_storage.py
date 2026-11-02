@@ -31,7 +31,7 @@ class StorageTests(unittest.TestCase):
     def test_global_text_generator_settings(self):
         generator = {'encoder': 'vision.safetensors', 'encoder_type': 'stable_diffusion', 'encoder_device': 'cpu', 'max_length': 1024}
         self.store.configure({'text_generator': generator})
-        self.store.configure({'defaults': {'references:qwen': {'prompt': 'Local default'}}})
+        self.store.configure({'defaults': {'references:anima': {'prompt': 'Local default'}}})
         reopened = module.ProjectStore(self.directory / 'settings.json', self.directory / 'unused')
         self.assertEqual(reopened.settings()['text_generator'], generator)
         self.assertNotIn('text_generator', reopened.read(self.project['id'])['config'])
@@ -40,7 +40,7 @@ class StorageTests(unittest.TestCase):
         first = self.store.import_image(self.project['id'], 'panels', png(), 'A')
         second = self.store.import_image(self.project['id'], 'panels', png('blue'), 'B', parent=first['id'])
         geometry = {'page': {'polygon': [[0, 0], [1, 0], [1, 1]], 'asset': first['id'], 'dx': .23, 'zoom': 1.4}}
-        self.store.update(self.project['id'], {'workspace': geometry, 'config': {'panels:krea': {'loras': ['A']}}})
+        self.store.update(self.project['id'], {'workspace': geometry, 'config': {'panels:anima': {'loras': ['A']}}})
         self.assertEqual(self.store.read(self.project['id'])['workspace'], geometry)
         self.assertEqual(second['version'], 2)
         self.assertEqual(self.store.asset_path(self.project['id'], first).read_bytes(), png())

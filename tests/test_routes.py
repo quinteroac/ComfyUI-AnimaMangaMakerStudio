@@ -1,7 +1,6 @@
 import asyncio
 import importlib.util
 import io
-import hashlib
 import json
 from pathlib import Path
 import sys
@@ -41,7 +40,7 @@ class RouteTests(unittest.IsolatedAsyncioTestCase):
         directory = Path(__file__).parents[1]
         spec = importlib.util.spec_from_file_location('manga_route_test', directory / '__init__.py', submodule_search_locations=[str(directory)])
         package = importlib.util.module_from_spec(spec); sys.modules[spec.name] = package
-        for name in ('manga_route_test.routes', 'manga_route_test.storage', 'manga_route_test.models', 'manga_route_test.assistant'): sys.modules.pop(name, None)
+        for name in ('manga_route_test.routes', 'manga_route_test.storage', 'manga_route_test.assistant'): sys.modules.pop(name, None)
         spec.loader.exec_module(package)
         self.routes = sys.modules['manga_route_test.routes']; self.store = self.routes.store
         app.add_routes(server.PromptServer.instance.routes)
@@ -65,7 +64,7 @@ class RouteTests(unittest.IsolatedAsyncioTestCase):
         temp = self.root / 'output' / 'anima-manga-maker-drawing' / project['id'] / f'{job_id}.png'
         temp.parent.mkdir(parents=True); temp.write_bytes(image.getvalue())
         response = await self.client.post(f"/anima-manga-maker/projects/{project['id']}/jobs", json={
-            'id': job_id, 'operation': 'sketch', 'kind': 'panels', 'engine': 'krea_edit', 'settings': {},
+            'id': job_id, 'operation': 'sketch', 'kind': 'panels', 'engine': 'anima_ref', 'settings': {},
             'prompt': {}, 'output_node': '1', 'sources': [], 'name': 'Sketch to Art', 'drawing_output': {'filename': '../forged'},
         })
         self.assertEqual(response.status, 200); self.assertNotIn('drawing_output', await response.json())
@@ -123,40 +122,6 @@ class RouteTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(header.startswith("attachment; filename*=UTF-8''"))
             self.assertEqual(unquote(header.split("UTF-8''", 1)[1]), filename)
 
-    async def test_official_download_is_explicit_verified_and_retryable(self):
-        module = sys.modules['manga_route_test.models']; downloads = self.routes.model_downloads
-        weights = b'isolated weight fixture'; hits = []
-        async def serve(request):
-            hits.append(request.path); return web.Response(body=weights)
-        app = web.Application(); app.router.add_get('/weights', serve)
-        server = TestServer(app); await server.start_server()
-        artifact = {'id': 'fixture', 'directory': 'diffusion_models', 'filename': 'official.safetensors', 'size': len(weights), 'sha256': hashlib.sha256(weights).hexdigest(), 'url': str(server.make_url('/weights'))}
-        module.CATALOG = {'profiles': {'krea': {'artifacts': ['fixture'], 'settings': {'model': artifact['filename'], 'steps': 8, 'sampler': 'euler'}}}, 'artifacts': [artifact]}
-        try:
-            response = await self.client.get('/anima-manga-maker/models'); self.assertEqual(response.status, 200)
-            self.assertIsNone((await response.json())['artifacts'][0]['installed']); self.assertEqual(hits, [])
-            response = await self.client.post('/anima-manga-maker/models/download', json={'engine': '../../outside', 'url': str(server.make_url('/weights'))})
-            self.assertEqual(response.status, 400); self.assertEqual(hits, [])
-            await self.client.post('/anima-manga-maker/models/download', json={'engine': 'krea'})
-            await downloads.tasks['krea']; self.assertEqual(downloads.states['krea']['state'], 'complete')
-            self.assertEqual(self.store.settings()['models']['krea']['steps'], 8)
-            target = self.root / 'models/diffusion_models/official.safetensors'; self.assertEqual(target.read_bytes(), weights)
-            self.assertEqual(hits, ['/weights'])
-            response = await self.client.get('/anima-manga-maker/models'); self.assertEqual((await response.json())['artifacts'][0]['installed'], 'official.safetensors')
-            await self.client.post('/anima-manga-maker/models/download', json={'engine': 'krea'}); await downloads.tasks['krea']
-            self.assertEqual(hits, ['/weights'])
-            target.unlink(); artifact['sha256'] = '0' * 64
-            await self.client.post('/anima-manga-maker/models/download', json={'engine': 'krea'}); await downloads.tasks['krea']
-            self.assertEqual(downloads.states['krea']['state'], 'error'); self.assertFalse(target.exists())
-            self.assertFalse(list(target.parent.glob('*.manga-download')))
-            artifact['sha256'] = hashlib.sha256(weights).hexdigest()
-            await self.client.post('/anima-manga-maker/models/download', json={'engine': 'krea'}); await downloads.tasks['krea']
-            self.assertEqual(downloads.states['krea']['state'], 'complete')
-            self.assertEqual(len(hits), 3)
-            self.assertEqual(len([a for a in json.loads(Path(__file__).parents[1].joinpath('model-catalog.json').read_text())['artifacts'] if a['directory'] == 'loras']), 1)
-        finally:
-            await server.close()
-
     async def test_drawing_documents_versions_and_project_ownership(self):
         one = self.store.create('Drawings'); two = self.store.create('Other project')
         image = io.BytesIO(); Image.new('RGBA', (96, 64), 'white').save(image, format='PNG')
@@ -186,7 +151,7 @@ class RouteTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_result_ownership_survives_project_switch_and_repeat_poll(self):
         one = self.store.create('Uno'); two = self.store.create('Dos'); job_id = str(uuid.uuid4())
-        body = {'id': job_id, 'operation': 'panels', 'engine': 'qwen', 'kind': 'panels', 'settings': {'loras': [{'name': 'active', 'model': .5}]}, 'prompt': {}, 'output_node': '9', 'name': 'Result', 'sources': []}
+        body = {'id': job_id, 'operation': 'panels', 'engine': 'anima', 'kind': 'panels', 'settings': {'loras': [{'name': 'active', 'model': .5}]}, 'prompt': {}, 'output_node': '9', 'name': 'Result', 'sources': []}
         response = await self.client.post(f"/anima-manga-maker/projects/{one['id']}/jobs", json=body); self.assertEqual(response.status, 200)
         self.queue.pending = [(0, job_id)]
         response = await self.client.get(f"/anima-manga-maker/projects/{one['id']}"); self.assertEqual((await response.json())['jobs'][0]['state'], 'queued')
@@ -203,7 +168,7 @@ class RouteTests(unittest.IsolatedAsyncioTestCase):
         ids = [str(uuid.uuid4()) for _ in range(3)]
         url = f"/anima-manga-maker/projects/{project['id']}"
         for job_id in ids:
-            await self.client.post(url + '/jobs', json={'id': job_id, 'operation': 'panels', 'engine': 'qwen', 'kind': 'panels', 'settings': {}, 'prompt': {}, 'output_node': '9', 'name': 'Result', 'sources': []})
+            await self.client.post(url + '/jobs', json={'id': job_id, 'operation': 'panels', 'engine': 'anima', 'kind': 'panels', 'settings': {}, 'prompt': {}, 'output_node': '9', 'name': 'Result', 'sources': []})
         self.queue.running = [(0, ids[0])]; self.queue.pending = [(1, ids[1]), (2, ids[2])]
         for job_id in ids[:2]:
             response = await self.client.patch(url + f'/jobs/{job_id}', json={'cancel_requested': True})
@@ -221,13 +186,8 @@ class RouteTests(unittest.IsolatedAsyncioTestCase):
         data = await (await self.client.get(url)).json()
         self.assertEqual(data['jobs'][2]['state'], 'complete'); self.assertEqual(len(data['assets']), 1)
 
-    async def test_analysis_is_text_and_invalid_source_cannot_escape(self):
-        project = self.store.create('Análisis'); job_id = str(uuid.uuid4())
-        body = {'id': job_id, 'operation': 'analysis', 'engine': 'qwen', 'kind': 'pages', 'settings': {}, 'prompt': {}, 'output_node': '5', 'name': 'Análisis'}
-        await self.client.post(f"/anima-manga-maker/projects/{project['id']}/jobs", json=body)
-        self.queue.history[job_id] = {'status': {'status_str': 'success', 'completed': True}, 'outputs': {'5': {'text': ['Propuesta revisable']}}}
-        response = await self.client.get(f"/anima-manga-maker/projects/{project['id']}"); data = await response.json()
-        self.assertEqual(data['jobs'][0]['text'], 'Propuesta revisable'); self.assertEqual(data['assets'], [])
+    async def test_invalid_source_cannot_escape(self):
+        project = self.store.create('Contención')
         response = await self.client.post(f"/anima-manga-maker/projects/{project['id']}/stage", json={'assets': ['../../etc/passwd']}); self.assertEqual(response.status, 400)
 
     async def test_local_fonts_reopen_and_reject_invalid_files(self):

@@ -10,7 +10,7 @@ const root = path.resolve(import.meta.dirname, '..');
 const fixture = spawn(process.argv[3], [path.join(root, 'tests/browser_backend.py')], { stdio: ['ignore', 'pipe', 'pipe'] });
 fixture.stderr.on('data', b => process.stderr.write(b));
 const [chunk] = await once(fixture.stdout, 'data'), backend = JSON.parse(chunk.toString());
-const defs = JSON.parse(await fs.readFile(process.argv[4] || '/tmp/manga-object-info.json', 'utf8'));
+const defs = process.argv[4] && JSON.parse(await fs.readFile(process.argv[4], 'utf8'));
 const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROMIUM_PATH });
 const page = await browser.newPage({ viewport: { width: 1440, height: 980 } });
 const errors = []; page.on('pageerror', error => errors.push(error.message));
@@ -39,6 +39,12 @@ try {
     await page.goto(process.env.COMFY_URL || 'http://127.0.0.1:8188', { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => window.comfyAPI?.app?.app?.graph && window.comfyAPI.app.app.extensions.some(e => e.name === 'AnimaMangaMaker.Studio'));
     await page.waitForTimeout(2500);
+    // The last workflow can finish loading after the app reports ready; snapshot the graph once it stops changing.
+    for (let previous = ''; ;) {
+        const current = await page.evaluate(() => JSON.stringify(window.comfyAPI.app.app.graph.serialize()));
+        if (current === previous) break;
+        previous = current; await page.waitForTimeout(1500);
+    }
     const graphBefore = await page.evaluate(() => {
         const app = window.comfyAPI.app.app, graph = app.graph.serialize();
         app.extensions.find(e => e.name === 'AnimaMangaMaker.Studio').commands[0].function(); return graph;
@@ -47,29 +53,34 @@ try {
     for (const space of ['references', 'panels']) {
         await studio.getByRole('button', { name: space === 'references' ? 'References' : 'Panels', exact: true }).click();
         const view = studio.locator(`.amm-${space}`);
-        for (const engine of ['moss', 'anima']) {
-            await view.getByLabel('Engine', { exact: true }).selectOption(engine);
-            assert.equal(await view.getByText('Connected visual references', { exact: true }).count(), 0);
-            await view.locator('summary').filter({ hasText: /^Models and advanced settings$/ }).click();
-            assert.equal(await view.getByLabel('Encoder loading type', { exact: true }).inputValue(), engine === 'moss' ? 'moss_image' : 'qwen_image');
-            assert.equal(await view.getByRole('button', { name: 'Download missing official weights', exact: true }).count(), 0);
-            if (engine === 'moss') assert.equal(await view.getByLabel('Eight-step LoRA', { exact: true }).inputValue(), 'moss/lora.safetensors');
-            await view.locator('summary').filter({ hasText: /^Sampling$/ }).click();
-            if (engine === 'anima') assert((await view.getByLabel('Negative prompt', { exact: true }).inputValue()).includes('worst quality'));
-            await view.getByLabel('Resolution · MP', { exact: true }).fill('0.5');
-            await view.getByLabel('Resolution · MP', { exact: true }).press('Tab');
-            const before = queued.length;
-            await view.getByRole('button', { name: space === 'references' ? 'Generate reference' : 'Generate panel', exact: true }).click();
-            await page.waitForTimeout(1000);
-            assert.equal(queued.length, before + 1, await studio.locator('.amm-error').textContent());
-            const nodes = Object.values(queued.at(-1).prompt);
-            const sampler = nodes.find(n => n.class_type === 'KSampler');
-            assert.equal(sampler.inputs.steps, 8); assert.equal(sampler.inputs.cfg, 1); assert.equal(sampler.inputs.sampler_name, 'er_sde');
-            assert(nodes.some(n => n.class_type === (engine === 'moss' ? 'EmptyFlux2LatentImage' : 'EmptyLatentImage')));
-            await page.waitForTimeout(2200);
-        }
+        await view.getByLabel('Engine', { exact: true }).selectOption('anima');
+        assert.deepEqual(await view.getByLabel('Engine', { exact: true }).locator('option').evaluateAll(options => options.map(o => o.value)), ['anima', 'anima_ref']);
+        assert.equal(await view.getByText('Connected visual references', { exact: true }).count(), 0);
+        await view.locator('summary').filter({ hasText: /^Models and advanced settings$/ }).click();
+        assert.equal(await view.getByLabel('Diffusion model', { exact: true }).inputValue(), 'anima/anima-turbo-v1.0-int8-convrot.safetensors');
+        assert.equal(await view.getByLabel('Encoder loading type', { exact: true }).inputValue(), 'stable_diffusion');
+        await view.locator('summary').filter({ hasText: /^Sampling$/ }).click();
+        assert((await view.getByLabel('Negative prompt', { exact: true }).inputValue()).includes('worst quality'));
+        await view.getByLabel('Resolution · MP', { exact: true }).fill('0.5');
+        await view.getByLabel('Resolution · MP', { exact: true }).press('Tab');
+        const before = queued.length;
+        await view.getByRole('button', { name: space === 'references' ? 'Generate reference' : 'Generate panel', exact: true }).click();
+        await page.waitForTimeout(1000);
+        assert.equal(queued.length, before + 1, await studio.locator('.amm-error').textContent());
+        const nodes = Object.values(queued.at(-1).prompt);
+        const sampler = nodes.find(n => n.class_type === 'KSampler');
+        assert.equal(sampler.inputs.steps, 8); assert.equal(sampler.inputs.cfg, 1); assert.equal(sampler.inputs.sampler_name, 'er_sde');
+        assert(nodes.some(n => n.class_type === 'EmptyLatentImage'));
+        await page.waitForTimeout(2200);
+        // Anima Ref takes character and style from connected references, so it waits for at least one.
+        await view.getByLabel('Engine', { exact: true }).selectOption('anima_ref');
+        await view.getByText('Connected visual references', { exact: true }).waitFor();
+        assert.equal(await view.locator('.amm-run-hint').innerText(), 'Connect one to four references.');
+        await view.locator('summary').filter({ hasText: /^Models and advanced settings$/ }).click();
+        await view.locator('summary').filter({ hasText: /^Anima reference adapter$/ }).click();
+        assert.equal(await view.getByLabel('Ref Adapter LoRA', { exact: true }).inputValue(), 'anima_ref_adapter_pilot_r32.safetensors');
     }
     assert.deepEqual(await page.evaluate(() => window.comfyAPI.app.app.graph.serialize()), graphBefore);
     assert.deepEqual(errors, []);
-    console.log('Moss and Anima: selection, inherited settings, negative prompt, AR/MP and four simulated generations passed; open graph unchanged.');
+    console.log('Anima and Anima Ref: engine list, Turbo defaults, negative prompt, AR/MP, two simulated generations and the reference requirement passed; open graph unchanged.');
 } finally { await page.unrouteAll({ behavior: 'wait' }); await browser.close(); fixture.kill(); }

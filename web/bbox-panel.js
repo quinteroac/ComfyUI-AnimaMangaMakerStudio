@@ -6,17 +6,15 @@ const boxTypes = [['object', 'Object'], ['character', 'Character'], ['text', 'Te
 // Colors only tell boxes apart on the canvas; they are not sent to the model as a palette.
 const boxColors = ['#3584ff', '#e01b9b', '#2ec27e', '#e5a50a', '#9141ac', '#e66100', '#00a3a3', '#c01c28'];
 const boxColor = (box, i) => box.color || boxColors[i % boxColors.length];
-const engines = [['moss', 'MOSS-Image · trained on this layout'], ['krea', 'Krea2'], ['qwen', 'Qwen Image 2.1'], ['anima', 'Anima']];
 
 // Boxes are stored as fractions of the canvas so they survive canvas resizing; Klecks receives them in canvas pixels.
-// They belong to the workspace and are shared by every engine, while each engine keeps its own prompt and model settings.
 // `linked` maps a box id to the ids sharing its generated layer, and `moved` reports a canvas move or resize of a linked box.
 export function bboxControls(studio, kind, send, dimensions, changed, linked, moved) {
-    const scope = `bbox_${kind}`, fresh = !studio.project.workspace[scope], state = studio.state(scope);
-    if (fresh) state.engine = 'moss';
+    const scope = `bbox_${kind}`, state = studio.state(scope);
+    state.engine = 'anima';
     state.boxes ||= [];
     for (const box of state.boxes) box.id ||= uuid().slice(0, 8);
-    let cfg = studio.config(scope, state.engine);
+    const cfg = studio.config(scope, 'anima');
     const element = el('div');
     const drawing = el('input', { type: 'checkbox', 'aria-label': 'Draw boxes on canvas', onchange: () => send('manga-drawing-box-tool', { enabled: drawing.checked }) });
     const list = el('div', { class: 'amm-bbox-list' });
@@ -69,24 +67,18 @@ export function bboxControls(studio, kind, send, dimensions, changed, linked, mo
     }
     function render() {
         element.replaceChildren();
-        const engine = el('select', { 'aria-label': 'BBox engine', onchange: e => {
-            state.engine = e.target.value; cfg = studio.config(scope, state.engine); changed(); render();
-        } }, ...engines.map(([value, text]) => el('option', { value, text })));
-        engine.value = state.engine;
         const presets = el('div', { class: 'amm-row' }); studio.presets(presets, scope, cfg, {}, () => { changed(); render(); });
-        const missing = state.engine === 'krea' ? [] : ['CreateBoundingBoxes', 'MOSSImageLayoutPrompt'].filter(type => !studio.defs[type]);
+        const missing = ['CreateBoundingBoxes', 'MOSSImageLayoutPrompt'].filter(type => !studio.defs[type]);
         const prompt = el('details', { open: true }, el('summary', { text: 'Scene prompt' })); studio.promptControls(prompt, cfg, update);
-        const alpha = el('div'); studio.alphaControls(alpha, cfg, state.engine, update);
-        const sampling = el('div'); studio.samplingControls(sampling, cfg, state.engine, update, scope); sampling.append(seed('Seed', cfg, update));
-        element.append(field('Engine', engine), presets, ...missing.length ? [el('small', { text: `Missing ${missing.join(' and ')}. Update ComfyUI, then refresh lists.` })] : [],
-            el('small', { text: state.engine === 'krea'
-                ? 'Generates the whole canvas from the scene prompt and the boxes, written as Krea2 BBOX Prompter JSON. The Environment section becomes its background, and boxes without a description are skipped. The drawing itself is not sent to the model.'
-                : 'Generates the whole canvas from the scene prompt and the boxes, written in the MOSS-Image layout format. MOSS-Image is trained on it; other engines receive it as prompt text. Put background boxes first and foreground boxes last; the drawing itself is not sent to the model.' }),
+                const alpha = el('div'); studio.alphaControls(alpha, cfg, 'anima', update);
+        const sampling = el('div'); studio.samplingControls(sampling, cfg, 'anima', update, scope); sampling.append(seed('Seed', cfg, update));
+        element.append(presets, ...missing.length ? [el('small', { text: `Missing ${missing.join(' and ')}. Update ComfyUI, then refresh lists.` })] : [],
+            el('small', { text: 'Generates the whole canvas from the scene prompt and the boxes, written in the MOSS-Image layout format as prompt text. Put background boxes first and foreground boxes last; the drawing itself is not sent to the model.' }),
             toggle('Draw boxes on canvas', drawing), el('small', { text: 'Drag a corner to resize a box and its edge or label to move it. While drawing boxes, Ctrl+Z and Ctrl+Y undo and redo box changes.' }), list,
             el('div', { class: 'amm-row' }, button('Clear boxes', () => edit(() => { state.boxes = []; })), undoButton, redoButton), prompt,
             alpha, slider('Working resolution · MP', el('input', { type: 'number', 'aria-label': 'Working resolution · MP', value: cfg.megapixels, step: 0.1, onchange: e => { cfg.megapixels = Number(e.target.value); update(); } }), [0.25, 4]),
             sampling);
-        studio.modelControls(element, cfg, state.engine, update, false, scope, render);
+        studio.modelControls(element, cfg, 'anima', update, false, scope, render);
         renderList();
     }
     render();

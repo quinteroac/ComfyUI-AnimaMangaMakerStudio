@@ -2,9 +2,6 @@ import { api } from '../../scripts/api.js';
 import { el, button, field, request } from './client.js';
 import { segmented, toggle } from './controls.js';
 
-// Animadex tags are for Anima; Stylebook prose works with every engine, Anima included.
-export const styleSource = engine => ['anima', 'anima_edit'].includes(engine) ? 'animadex' : ['krea', 'krea_edit', 'qwen', 'moss'].includes(engine) ? 'stylebook' : null;
-
 const animadexTabs = [['artist', 'Animadex styles'], ['character', 'Characters']];
 const stylebookLabels = { anime_manga: 'Anime & manga', comics: 'Comics', illustration: 'Illustration', painting: 'Painting', art_movements: 'Art movements', print_graphic: 'Print & graphic',
     photography: 'Photography', film_cinema: 'Film & cinema', three_d_digital: '3D & digital', craft_material: 'Craft & material', collage_mixed: 'Collage & mixed', object_artifact: 'Objects & artifacts' };

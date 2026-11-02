@@ -1,4 +1,3 @@
-import { analysisInstruction } from './page-analysis.js';
 import { imageDimensions } from './size.js';
 
 export const promptSections = [['subject', 'Subject'], ['appearance', 'Appearance'], ['pose', 'Pose'], ['expression', 'Expression'], ['composition', 'Composition'], ['environment', 'Environment'], ['lighting', 'Lighting'], ['style', 'Style']];
@@ -51,36 +50,6 @@ export const referencePresets = {
     } },
 };
 
-export const refinementPresets = {
-    General: { prompt: '', prompt_sections: {
-        task: 'IMAGE_EDIT',
-        appearance: 'Correct visible anatomical and proportion errors while preserving the original subjects, identities, hairstyles, clothing and accessories.',
-        pose: 'Preserve the original poses and actions.',
-        composition: 'Preserve the original framing, camera angle and composition. For a page, preserve panel boundaries and reading order.',
-        style: 'Improve linework, rendering clarity and visual consistency while preserving the original artistic style.',
-    } },
-    Background: { prompt: '', prompt_sections: {
-        task: 'IMAGE_EDIT',
-        environment: 'Refine only the existing background: correct perspective and improve environmental detail without changing foreground subjects, objects or the scene content.',
-        composition: 'Preserve framing, camera angle and foreground placement. For a page, preserve panel boundaries and reading order.',
-    } },
-    Hands: { prompt: '', prompt_sections: {
-        task: 'IMAGE_EDIT',
-        appearance: 'Correct only visible hand anatomy, finger structure and proportions. Preserve identity, clothing and all other image details.',
-        pose: 'Preserve the existing hand gestures, contact with objects and overall body pose.',
-    } },
-    Face: { prompt: '', prompt_sections: {
-        task: 'IMAGE_EDIT',
-        appearance: 'Refine only facial anatomy and feature alignment while preserving the original facial identity, hairstyle and all other image details.',
-        expression: 'Preserve the original emotion, gaze direction and expression while making them clearer.',
-    } },
-    'Color → Manga': { prompt: '', prompt_sections: {
-        task: 'IMAGE_EDIT',
-        composition: 'Preserve all subjects, actions, framing and scene content. For a page, preserve panel boundaries and reading order.',
-        style: 'Convert the original image to black-and-white manga with clean ink lines, screentones, controlled blacks and readable silhouettes. Preserve fine details and visual hierarchy.',
-    } },
-};
-
 export function referencePrompt(asset) {
     if (asset.deleted || asset.missing) return null;
     const settings = asset.metadata?.settings || {};
@@ -129,14 +98,13 @@ export function options(defs, node, field) {
 }
 
 export function defaultAttention(defs, engine) {
-    if (!['krea', 'krea_edit', 'anima_edit'].includes(engine)) return '';
+    if (engine !== 'anima_ref') return '';
     return options(defs, 'ModelAttentionBackend', 'attention').includes('comfy kitchen attention') ? 'comfy kitchen attention' : 'pytorch attention';
 }
 
-// Qwen Image 2.1 decodes RGBA with its own VAE; MOSS and Krea2 need an alpha LoRA with alpha VAEs, or a chroma key over a flat background.
-export const alphaMethods = { moss: ['lora', 'chromakey'], krea: ['lora', 'chromakey'], krea_edit: ['lora', 'chromakey'], anima_edit: ['chromakey'], qwen: ['native'] };
+// Chroma key asks for a flat background and removes it with VNCCS Chroma Key.
+export const alphaMethods = { anima: ['chromakey'], anima_ref: ['chromakey'] };
 const alphaBackground = {
-    lora: 'Isolated on a transparent background.', native: 'Isolated on a transparent background.',
     chromakey: 'Isolated on a completely flat, uniform, solid dark indigo purple background (hex #1E0050) with no gradient, no shadow and no texture.',
 };
 
@@ -151,56 +119,17 @@ export function textInstruction(task, config, section) {
 }
 
 export const initialSettings = (engine) => ({
-    engine, model: '', encoder: '', vae: '', encoder_type: engine === 'qwen' ? 'qwen_image' : 'stable_diffusion',
-    weight_dtype: 'default', encoder_device: 'default', prompt: '', prompt_sections: {}, negative: '',
-    aspect_ratio: '1:1', megapixels: 1, seed: 0, random_seed: true, steps: engine === 'qwen' ? 8 : 12,
-    cfg: 1, sampler: 'euler', scheduler: engine === 'qwen' ? 'beta' : 'simple', denoise: 0.65,
-    attention: '', cache_device: 'auto', cache_dtype: 'default',
-    ref_boost: 1, ref_boost_a: 1, fit_mode: 'fit', grounding_px: 768, grounding_system_prompt: '',
-    references: [], loras: [], max_length: 512, analysis_prompts: {},
-    analysis_encoder: '', analysis_encoder_type: 'stable_diffusion', finish_mode: 'refine', alpha: '',
-    ...(engine === 'krea_edit' ? { steps: 4, latent_reference: '' } : {}),
-    ...(['krea', 'krea_edit'].includes(engine) ? { encoder_type: 'krea2', shift: 1.15,
-        alpha_lora: 'krea2_manga_alpha_image_lora.safetensors', alpha_vae: 'wan_alpha_v2_vae_alpha.safetensors', alpha_rgb_vae: 'wan_alpha_v2_vae_rgb.safetensors' } : {}),
-    ...(engine === 'moss' ? { alpha_lora: 'moss_manga_alpha_image_lora.safetensors', alpha_vae: 'flux2_klein_alpha_rgba_vae.safetensors' } : {}),
-    ...(['moss', 'anima'].includes(engine) ? { steps: 8, sampler: 'er_sde', scheduler: 'simple',
-        encoder_type: engine === 'moss' ? 'moss_image' : 'qwen_image', accelerator_lora: engine === 'moss' ? 'moss/lora.safetensors' : '',
-        negative: engine === 'anima' ? 'score_6, score_5, score_4, worst quality, low quality, text, censored, deformed, bad hand, blurry, (watermark),' : '' } : {}),
-    ...(engine === 'anima_edit' ? { steps: 8, sampler: 'euler', scheduler: 'simple', encoder_type: 'stable_diffusion', ref_adapter_lora: 'anima_ref_adapter_pilot_r32.safetensors', ref_guidance: 1, pag_scale: 1.3,
+    engine, model: '', encoder: '', vae: '', encoder_type: 'stable_diffusion',
+    weight_dtype: 'default', encoder_device: 'default', prompt: '', prompt_sections: {},
+    aspect_ratio: '1:1', megapixels: 1, seed: 0, random_seed: true, steps: 8, cfg: 1, denoise: 0.6,
+    attention: '', references: [], loras: [], max_length: 512, alpha: '',
+    ...(engine === 'anima' ? { sampler: 'er_sde', scheduler: 'simple',
+        negative: 'score_6, score_5, score_4, worst quality, low quality, text, censored, deformed, bad hand, blurry, (watermark),' } : {}),
+    ...(engine === 'anima_ref' ? { sampler: 'euler', scheduler: 'simple', ref_adapter_lora: 'anima_ref_adapter_pilot_r32.safetensors', ref_guidance: 1, pag_scale: 1.3,
         negative: 'worst quality, low quality, score_1, score_2, score_3, blurry, jpeg artifacts, chromatic aberration, bad anatomy, bad hands, extra arms, extra fingers, missing fingers, text, watermark, signature, artist name, multiple views, split screen, comic, 2koma, 4koma' } : {}),
 });
 
-// Matches the Export node of github.com/ukr8b3g-cmyk/Krea2-BBOX-Prompter with its defaults: [x1, y1, x2, y2] per mille,
-// a position hint on every desc, and boxes without a description or text skipped.
-export function krea2Layout(scene, background, boxes, size) {
-    const gcd = (a, b) => b ? gcd(b, a % b) : a, divisor = gcd(size.width, size.height);
-    const elements = boxes.flatMap(box => {
-        const x1 = Math.round(Math.max(0, box.x) * size.width), y1 = Math.round(Math.max(0, box.y) * size.height);
-        const x2 = Math.round(Math.min(1, box.x + box.width) * size.width), y2 = Math.round(Math.min(1, box.y + box.height) * size.height);
-        if (x1 >= x2 || y1 >= y2) return [];
-        const cx = (x1 + x2) / 2 / size.width, cy = (y1 + y2) / 2 / size.height, area = (x2 - x1) * (y2 - y1) / (size.width * size.height);
-        const column = cx < 0.34 ? 'left' : cx > 0.66 ? 'right' : 'center', row = cy < 0.34 ? 'upper' : cy > 0.66 ? 'lower' : 'middle';
-        const place = column === 'center' ? (row === 'middle' ? 'center' : `${row}-center`) : row === 'middle' ? `middle-${column}` : `${row}-${column}`;
-        const extent = area >= 0.55 ? 'dominant' : area >= 0.25 ? 'large' : area >= 0.10 ? 'medium-sized' : 'small';
-        const hint = `positioned in the ${place} area, occupying a ${extent} area`;
-        const bbox = [x1 / size.width, y1 / size.height, x2 / size.width, y2 / size.height].map(value => Math.round(value * 1000));
-        const desc = box.desc?.trim() || '';
-        if (box.type === 'text') {
-            const text = box.text?.trim() || '';
-            return text ? [{ type: 'text', bbox, text, desc: `${desc || 'readable text with black outline'}, ${hint}` }] : [];
-        }
-        return desc ? [{ type: 'obj', bbox, desc: `${desc}, ${hint}` }] : [];
-    });
-    return JSON.stringify({ aspect_ratio: `${size.width / divisor}:${size.height / divisor}`, high_level_description: scene,
-        compositional_deconstruction: { background, elements } });
-}
-
 export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) {
-    if (engine === 'krea_edit' && !imagePaths.length) throw new Error('Krea2 editing requires at least one reference image.');
-    const sketch = operation === 'sketch' && engine === 'krea_edit';
-    const isKrea = engine === 'krea' || engine === 'krea_edit';
-    const kreaEditing = isKrea && imagePaths.length > 0 && operation !== 'refine';
-    if (kreaEditing && imagePaths.length > 4) throw new Error('Krea2 editing supports up to four reference images.');
     const graph = {};
     let count = 0;
     const add = (type, inputs) => {
@@ -226,60 +155,30 @@ export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) 
         const output = add('SaveText', { text, filename_prefix: `anima-manga-maker/${jobId}/${operation}`, format: 'txt' });
         return { graph, outputNode: output[0] };
     }
-    if (operation === 'analysis') {
-        if (!images.length) throw new Error('Select a page to analyze.');
-        const clip = load(config.analysis_encoder, config.analysis_encoder_type);
-        const text = add('TextGenerate', { clip, prompt: analysisInstruction(config), image: images[0], max_length: Number(config.max_length),
-            sampling_mode: 'off', thinking: false, use_default_template: true, mtp: 'auto' });
-        const output = add('SaveText', { text, filename_prefix: `anima-manga-maker/${jobId}/analysis`, format: 'txt' });
-        return { graph, outputNode: output[0] };
-    }
-    if (images.length && config.size_mode === 'manual' && (engine === 'qwen' || operation === 'refine')) {
-        images[0] = add('ImageScale', { image: images[0], upscale_method: 'lanczos', ...imageDimensions(config, engine === 'qwen' ? 32 : 8), crop: 'center' });
-    }
     const alpha = alphaMethods[engine]?.includes(config.alpha) ? config.alpha : '';
     const prompt = [composePrompt(config), alphaBackground[alpha]].filter(Boolean).join('\n\n');
-    const alphaLora = model => alpha === 'lora' ? add('LoraLoaderModelOnly', { model, lora_name: check('LoraLoaderModelOnly', 'lora_name', config.alpha_lora, 'Alpha LoRA'), strength_model: 1 }) : model;
-    // Settings follow the chroma key workflows; native RGBA comes straight from the VAE.
-    const decode = (samples, vae) => {
-        if (alpha === 'chromakey') return add('VNCCSChromaKey', { image: add('VAEDecode', { samples, vae }), tolerance: 0.15, softness: 0.12, despill_strength: 0.65, edge_width: 3,
-            matte_cleanup: 0.1, foreground_recover: 0.35, edge_decontaminate: 0.75, edge_choke: 0.08, matte_method: 'guided_edge', screen_mode: 'auto', output_mode: 'straight_rgba', use_sam3_recovery_mask: false });
-        if (alpha !== 'lora') return add('VAEDecode', { samples, vae });
-        if (engine === 'moss') return add('VAEDecode', { samples, vae: add('RGBAVAELoader', { vae_name: check('RGBAVAELoader', 'vae_name', config.alpha_vae, 'RGBA VAE') }) });
-        const rgb = add('VAEDecode', { samples, vae: add('VAELoader', { vae_name: check('VAELoader', 'vae_name', config.alpha_rgb_vae, 'Alpha RGB VAE') }) });
-        const matte = add('VAEDecode', { samples, vae: add('VAELoader', { vae_name: check('VAELoader', 'vae_name', config.alpha_vae, 'Alpha channel VAE') }) });
-        return add('JoinImageWithAlpha', { image: rgb, alpha: add('InvertMask', { mask: add('ImageToMask', { image: matte, channel: 'red' }) }) });
-    };
-    const size = imageDimensions(config, engine === 'moss' ? 16 : 8);
-    let text = prompt;
-    if (operation === 'bbox' && engine === 'krea') {
-        // Krea2 reads the layout JSON of the Krea2 BBOX Prompter; the Environment section becomes its background.
-        const { environment, ...sections } = config.prompt_sections || {};
-        const scene = [composePrompt({ ...config, prompt_sections: sections }), alphaBackground[alpha]].filter(Boolean).join('\n\n');
-        text = krea2Layout(scene, environment?.trim() || '', config.boxes, size);
-    } else if (operation === 'bbox') {
-        // Boxes are stored as canvas fractions and written in the MOSS-Image layout format, like the official bbox template;
-        // MOSS-Image is trained on it and Qwen and Anima receive it as prompt text.
-        // List widget values are wrapped in __value__ because a bare list means a link in API prompts.
-        const boxes = add('CreateBoundingBoxes', { ...size, editor_state: { __value__: config.boxes.map(box => ({
-            x: Math.round(box.x * size.width), y: Math.round(box.y * size.height), width: Math.round(box.width * size.width), height: Math.round(box.height * size.height),
-            metadata: { type: box.type === 'text' ? 'text' : 'obj', text: box.type === 'text' ? box.text || '' : '', desc: box.desc || '', palette: [] } })) } });
-        text = add('MOSSImageLayoutPrompt', { prompt, element: [boxes[0], 2], ...size,
-            character_boxes: config.boxes.flatMap((box, i) => box.type === 'character' ? [i + 1] : []).join(', ') });
-    }
-    if (engine === 'anima_edit') {
+    // Settings follow the chroma key workflows.
+    const decode = (samples, vae) => alpha === 'chromakey' ? add('VNCCSChromaKey', { image: add('VAEDecode', { samples, vae }), tolerance: 0.15, softness: 0.12, despill_strength: 0.65, edge_width: 3,
+        matte_cleanup: 0.1, foreground_recover: 0.35, edge_decontaminate: 0.75, edge_choke: 0.08, matte_method: 'guided_edge', screen_mode: 'auto', output_mode: 'straight_rgba', use_sam3_recovery_mask: false })
+        : add('VAEDecode', { samples, vae });
+    // Sketch, BBox and project style previews stay in ComfyUI's temp folder instead of the project.
+    const save = images => ['sketch', 'bbox', 'style'].includes(operation) ? add('PreviewImage', { images }) : add('SaveImage', { images, filename_prefix: `anima-manga-maker/${jobId}/result` });
+    const size = imageDimensions(config, 8);
+    let model = add('UNETLoader', { unet_name: check('UNETLoader', 'unet_name', config.model, 'Model'), weight_dtype: config.weight_dtype });
+    const clip = load(config.encoder, config.encoder_type);
+    const vae = add('VAELoader', { vae_name: check('VAELoader', 'vae_name', config.vae, 'VAE') });
+    if (engine === 'anima_ref') {
         // Follows the anima_ref_adapter_pag_multi workflow: the references take character and style, the prompt gives the scene.
-        if (!images.length) throw new Error('Anima Ref Adapter requires at least one reference image.');
-        let model = add('UNETLoader', { unet_name: check('UNETLoader', 'unet_name', config.model, 'Model'), weight_dtype: config.weight_dtype });
-        const clip = load(config.encoder, config.encoder_type);
-        const vae = add('VAELoader', { vae_name: check('VAELoader', 'vae_name', config.vae, 'VAE') });
+        if (!images.length) throw new Error('Anima Ref requires at least one reference image.');
         model = add('AnimaRefAdapterLoader', { model, lora_name: check('AnimaRefAdapterLoader', 'lora_name', config.ref_adapter_lora, 'Ref Adapter LoRA'), strength: 1, ref_offset_h: 1 });
-        for (const lora of config.loras.filter(l => l.enabled)) {
-            model = add('LoraLoaderModelOnly', { model, lora_name: check('LoraLoaderModelOnly', 'lora_name', lora.name, 'LoRA'), strength_model: Number(lora.model) });
-        }
-        model = add('ModelComputeDtype', { model, dtype: 'bf16' });
-        const attention = config.attention || defaultAttention(defs, engine);
-        if (attention) model = add('ModelAttentionBackend', { model, attention: check('ModelAttentionBackend', 'attention', attention, 'Attention') });
+    }
+    for (const lora of config.loras.filter(l => l.enabled)) {
+        model = add('LoraLoaderModelOnly', { model, lora_name: check('LoraLoaderModelOnly', 'lora_name', lora.name, 'LoRA'), strength_model: Number(lora.model) });
+    }
+    if (engine === 'anima_ref') model = add('ModelComputeDtype', { model, dtype: 'bf16' });
+    const attention = config.attention || defaultAttention(defs, engine);
+    if (attention) model = add('ModelAttentionBackend', { model, attention: check('ModelAttentionBackend', 'attention', attention, 'Attention') });
+    if (engine === 'anima_ref') {
         if (Number(config.pag_scale)) model = add('AnimaSafePAG', { model, scale: Number(config.pag_scale), block_indices: '18', perturbation_strength: 0.75, head_indices: '',
             start_percent: 0.3, end_percent: 0.8, rescale: 0.2, rescale_mode: 'full' });
         // The adapter reads one reference image, so several references are placed side by side.
@@ -292,125 +191,21 @@ export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) 
         const latent = sketching ? add('VAEEncode', { pixels: [encoded[0], 2], vae }) : [encoded[0], 1];
         const sigmas = add('BasicScheduler', { model, scheduler: config.scheduler, steps: Number(config.steps), denoise: sketching ? Number(config.denoise ?? 0.6) : 1 });
         const sampled = add('SamplerCustomAdvanced', { noise: add('RandomNoise', { noise_seed: Number(config.seed) }), guider, sampler: add('KSamplerSelect', { sampler_name: config.sampler }), sigmas, latent_image: latent });
-        const decoded = decode(sampled, vae);
-        const output = sketching ? add('PreviewImage', { images: decoded }) : add('SaveImage', { images: decoded, filename_prefix: `anima-manga-maker/${jobId}/result` });
-        return { graph, outputNode: output[0] };
+        return { graph, outputNode: save(decode(sampled, vae))[0] };
     }
-    if (engine === 'moss' || engine === 'anima') {
-        if (imagePaths.length) throw new Error('This workflow generates from text. Use an editing engine to connect visual references.');
-        let model = add('UNETLoader', { unet_name: check('UNETLoader', 'unet_name', config.model, 'Model'), weight_dtype: config.weight_dtype });
-        const clip = load(config.encoder, config.encoder_type);
-        const vae = add('VAELoader', { vae_name: check('VAELoader', 'vae_name', config.vae, 'VAE') });
-        if (engine === 'moss' && config.accelerator_lora) {
-            const override = config.loras.find(l => l.enabled && l.name === config.accelerator_lora);
-            model = add('LoraLoaderModelOnly', { model, lora_name: check('LoraLoaderModelOnly', 'lora_name', config.accelerator_lora, 'Eight-step LoRA'), strength_model: Number(override?.model ?? 1) });
-        }
-        for (const lora of config.loras.filter(l => l.enabled)) {
-            if (engine === 'moss' && lora.name === config.accelerator_lora) continue;
-            model = add('LoraLoaderModelOnly', { model, lora_name: check('LoraLoaderModelOnly', 'lora_name', lora.name, 'LoRA'), strength_model: Number(lora.model) });
-        }
-        model = alphaLora(model);
-        if (config.attention) model = add('ModelAttentionBackend', { model, attention: check('ModelAttentionBackend', 'attention', config.attention, 'Attention') });
-        const positive = add('CLIPTextEncode', { clip, text });
-        const negative = engine === 'moss' ? add('ConditioningZeroOut', { conditioning: positive }) : add('CLIPTextEncode', { clip, text: config.negative });
-        const latent = add(engine === 'moss' ? 'EmptyFlux2LatentImage' : 'EmptyLatentImage', { ...size, batch_size: 1 });
-        const samples = add('KSampler', { model, positive, negative, latent_image: latent, seed: Number(config.seed), steps: Number(config.steps),
-            cfg: Number(config.cfg), sampler_name: config.sampler, scheduler: config.scheduler, denoise: 1 });
-        const decoded = decode(samples, vae);
-        const output = ['bbox', 'style'].includes(operation) ? add('PreviewImage', { images: decoded }) : add('SaveImage', { images: decoded, filename_prefix: `anima-manga-maker/${jobId}/result` });
-        return { graph, outputNode: output[0] };
+    if (images.length) throw new Error('This workflow generates from text. Use Anima Ref to connect visual references.');
+    let text = prompt;
+    if (operation === 'bbox') {
+        // Boxes are stored as canvas fractions and written in the MOSS-Image layout format, like the official bbox template; Anima receives it as prompt text.
+        // List widget values are wrapped in __value__ because a bare list means a link in API prompts.
+        const boxes = add('CreateBoundingBoxes', { ...size, editor_state: { __value__: config.boxes.map(box => ({
+            x: Math.round(box.x * size.width), y: Math.round(box.y * size.height), width: Math.round(box.width * size.width), height: Math.round(box.height * size.height),
+            metadata: { type: box.type === 'text' ? 'text' : 'obj', text: box.type === 'text' ? box.text || '' : '', desc: box.desc || '', palette: [] } })) } });
+        text = add('MOSSImageLayoutPrompt', { prompt, element: [boxes[0], 2], ...size,
+            character_boxes: config.boxes.flatMap((box, i) => box.type === 'character' ? [i + 1] : []).join(', ') });
     }
-    let model = add('UNETLoader', { unet_name: check('UNETLoader', 'unet_name', config.model, 'Model'), weight_dtype: config.weight_dtype });
-    let clip = load(config.encoder, config.encoder_type);
-    const vae = add('VAELoader', { vae_name: check('VAELoader', 'vae_name', config.vae, 'VAE') });
-    if (engine === 'krea_edit' && !sketch && config.identity_lora) {
-        const identity = config.loras.find(l => l.enabled && l.name === config.identity_lora);
-        model = add('LoraLoaderModelOnly', { model,
-            lora_name: check('LoraLoaderModelOnly', 'lora_name', config.identity_lora, 'Identity Edit LoRA'), strength_model: Number(identity?.model ?? 1) });
-    }
-    for (const lora of config.loras.filter(l => l.enabled)) {
-        if (engine === 'krea_edit' && !sketch && lora.name === config.identity_lora) continue;
-        const type = engine === 'krea_edit' ? 'LoraLoaderModelOnly' : 'LoraLoader';
-        check(type, 'lora_name', lora.name, 'LoRA');
-        const loaded = add(type, { model, lora_name: lora.name, strength_model: Number(lora.model), ...(engine === 'krea_edit' ? {} : { clip, strength_clip: Number(lora.clip) }) });
-        model = loaded; if (engine !== 'krea_edit') clip = [loaded[0], 1];
-    }
-    model = alphaLora(model);
-    const attention = config.attention || defaultAttention(defs, engine);
-    if (attention) {
-        check('ModelAttentionBackend', 'attention', attention, 'Attention');
-        model = add('ModelAttentionBackend', { model, attention });
-    }
-    if (isKrea && !sketch && config.shift !== '' && config.shift != null) {
-        const shift = Number(config.shift);
-        // Equal shifts make the patch independent of canvas resolution.
-        model = add('ModelSamplingFlux', { model, max_shift: shift, base_shift: shift, width: 1024, height: 1024 });
-    }
-    let positive, negative, latent;
-    if (isKrea) {
-        if (config.encoder_type !== 'krea2') throw new Error('Krea2 requires encoder type krea2.');
-        if (kreaEditing) {
-            positive = add('Krea2EditGroundedEncode', { clip, prompt, ...Object.fromEntries(images.map((image, i) => [['image', 'image_b', 'image_c', 'image_d'][i], image])),
-                grounding_px: Number(config.grounding_px ?? 768), system_prompt: config.grounding_system_prompt || '' });
-        } else positive = add('CLIPTextEncode', { clip, text });
-    } else {
-        if (config.encoder_type !== 'qwen_image') throw new Error('Qwen Image requires encoder type qwen_image.');
-        const spec = defs.TextEncodeQwenImage21?.input.required.images?.[1]?.template;
-        const names = spec?.names || [];
-        if (images.length > names.length) throw new Error(`The installed Qwen encoder provides ${names.length} visual inputs.`);
-        const encoded = add('TextEncodeQwenImage21', { clip, vae, prompt: text, negative_prompt: config.negative,
-            resolution: 0, ...Object.fromEntries(images.map((im, i) => [`images.${names[i]}`, im])) });
-        positive = encoded; negative = [encoded[0], 1];
-        if (images.length) latent = [encoded[0], 2];
-        if (defs.QwenImage21Cache) model = add('QwenImage21Cache', { model, device: config.cache_device, dtype: config.cache_dtype });
-    }
-    if (isKrea && operation === 'refine') {
-        if (!images.length) throw new Error('Select the original image.');
-        latent = add('VAEEncode', { pixels: images[0], vae });
-    }
-    const sources = kreaEditing ? images.map(pixels => add('VAEEncode', { pixels, vae })) : [];
-    const useReferenceLatent = engine === 'krea_edit' && (sketch || config.latent_reference_index != null);
-    if (useReferenceLatent) {
-        const index = sketch ? 0 : config.latent_reference_index;
-        if (!images[index]) throw new Error('The selected latent reference is not connected.');
-        if (!sketch && config.size_mode === 'manual') {
-            const pixels = add('ImageScale', { image: images[index], upscale_method: 'lanczos', ...imageDimensions(config), crop: 'center' });
-            latent = add('VAEEncode', { pixels, vae });
-        } else latent = sources[index];
-    }
-    if (!latent) {
-        // The selected VAE owns the native latent layout for both engines.
-        const pixels = add('EmptyImage', { ...size, batch_size: 1, color: 16777215 });
-        latent = add('VAEEncode', { pixels, vae });
-        latent = add('LatentMultiply', { samples: latent, multiplier: 0 });
-    }
-    let sampled;
-    if (kreaEditing) {
-        model = add('Krea2EditModelPatch', { model, vae, target_latent: latent,
-            ...Object.fromEntries(sources.flatMap((source, i) => {
-                const suffix = ['', '_b', '_c', '_d'][i];
-                return [[`source_latent${suffix}`, source], [`source_image${suffix}`, images[i]]];
-            })),
-            ref_boost: Number(config.ref_boost ?? 1), ref_boost_a: Number(config.ref_boost_a ?? 1), fit_mode: config.fit_mode || 'fit' });
-        if (sketch && config.shift !== '' && config.shift != null) {
-            const shift = Number(config.shift);
-            model = add('ModelSamplingFlux', { model, max_shift: shift, base_shift: shift, width: 1024, height: 1024 });
-        }
-        negative = add('ConditioningZeroOut', { conditioning: positive });
-        sampled = add('KSampler', { model, positive, negative, latent_image: latent, seed: Number(config.seed), steps: Number(config.steps),
-            cfg: Number(config.cfg), sampler_name: config.sampler, scheduler: config.scheduler, denoise: useReferenceLatent ? Number(config.denoise ?? 0.65) : 1 });
-    } else if (isKrea) {
-        const guider = add('BasicGuider', { model, conditioning: positive });
-        const sigmas = add('BasicScheduler', { model, scheduler: config.scheduler, steps: Number(config.steps), denoise: operation === 'refine' ? Number(config.denoise) : 1 });
-        const sampler = add('KSamplerSelect', { sampler_name: config.sampler });
-        const noise = add('RandomNoise', { noise_seed: Number(config.seed) });
-        sampled = add('SamplerCustomAdvanced', { noise, guider, sampler, sigmas, latent_image: latent });
-    } else {
-        sampled = add('KSampler', { model, positive, negative, latent_image: latent, seed: Number(config.seed), steps: Number(config.steps),
-            cfg: Number(config.cfg), sampler_name: config.sampler, scheduler: config.scheduler, denoise: 1 });
-    }
-    const decoded = decode(sampled, vae);
-    // Sketch, BBox and project style previews stay in ComfyUI's temp folder instead of the project.
-    const output = sketch || ['bbox', 'style'].includes(operation) ? add('PreviewImage', { images: decoded }) : add('SaveImage', { images: decoded, filename_prefix: `anima-manga-maker/${jobId}/result` });
-    return { graph, outputNode: output[0] };
+    const positive = add('CLIPTextEncode', { clip, text }), negative = add('CLIPTextEncode', { clip, text: config.negative });
+    const samples = add('KSampler', { model, positive, negative, latent_image: add('EmptyLatentImage', { ...size, batch_size: 1 }), seed: Number(config.seed), steps: Number(config.steps),
+        cfg: Number(config.cfg), sampler_name: config.sampler, scheduler: config.scheduler, denoise: 1 });
+    return { graph, outputNode: save(decode(samples, vae))[0] };
 }

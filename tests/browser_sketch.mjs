@@ -11,7 +11,7 @@ const root = path.resolve(import.meta.dirname, '..');
 const fixture = spawn(process.argv[3], [path.join(root, 'tests/browser_backend.py')], { stdio: ['ignore', 'pipe', 'pipe'] });
 fixture.stderr.on('data', b => process.stderr.write(b));
 const [chunk] = await once(fixture.stdout, 'data'), backend = JSON.parse(chunk.toString());
-const defs = JSON.parse(await fs.readFile(process.argv[4] || '/tmp/manga-object-info.json', 'utf8'));
+const defs = process.argv[4] ? JSON.parse(await fs.readFile(process.argv[4], 'utf8')) : await (await fetch((process.env.COMFY_URL || 'http://127.0.0.1:8188') + '/object_info')).json();
 const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROMIUM_PATH });
 const page = await browser.newPage({ viewport: { width: 1440, height: 980 } });
 const errors = []; page.on('pageerror', error => errors.push(error.message));
@@ -59,6 +59,13 @@ try {
     });
     await page.goto(process.env.COMFY_URL || 'http://127.0.0.1:8188', { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => window.comfyAPI?.app?.app?.graph && window.comfyAPI.app.app.extensions.some(e => e.name === 'AnimaMangaMaker.Studio'));
+    await page.waitForTimeout(2500);
+    // The last workflow can finish loading after the app reports ready; snapshot the graph once it stops changing.
+    for (let previous = ''; ;) {
+        const current = await page.evaluate(() => JSON.stringify(window.comfyAPI.app.app.graph.serialize()));
+        if (current === previous) break;
+        previous = current; await page.waitForTimeout(1500);
+    }
     const graphBefore = await page.evaluate(() => {
         const app = window.comfyAPI.app.app, graph = app.graph.serialize();
         app.extensions.find(e => e.name === 'AnimaMangaMaker.Studio').commands[0].function(); return graph;
@@ -84,6 +91,7 @@ try {
     assert.equal(await controls.getByLabel('Identity Edit LoRA', { exact: true }).count(), 0);
     const loras = controls.locator('details').filter({ has: page.getByRole('button', { name: 'Add LoRA', exact: true, includeHidden: true }) });
     await loras.locator('summary').click();
+    for (const index of [0, 1]) await loras.getByRole('button', { name: 'Add LoRA', exact: true }).click();
     for (const index of [0, 1]) await loras.getByLabel('LoRA file', { exact: true }).nth(index).fill(options(defs, 'LoraLoaderModelOnly', 'lora_name')[index]);
     await controls.locator('summary').filter({ hasText: /^Sampling$/ }).click();
     await controls.getByLabel('Denoise', { exact: true }).fill('0.45'); await controls.getByLabel('Denoise', { exact: true }).press('Tab');
@@ -154,16 +162,15 @@ try {
     await cloneDialog.getByRole('button', { name: 'Save', exact: true }).click(); await cloneDialog.waitFor({ state: 'detached' });
     assert.equal(await presetSelect.inputValue(), 'Bridge sketch copy');
     await page.waitForTimeout(700);
-    const storedPresets = (await (await fetch(`${backend.url}/anima-manga-maker/projects/${backend.project}`)).json()).presets['sketch_panels:krea_edit'];
+    const storedPresets = (await (await fetch(`${backend.url}/anima-manga-maker/projects/${backend.project}`)).json()).presets['sketch_panels:anima_ref'];
     assert.equal(storedPresets['Bridge sketch'].prompt_sections.subject, 'A traveler crossing a bridge');
     assert.deepEqual(storedPresets['Bridge sketch'].region, { x: 32, y: 32, width: 96, height: 96 });
-    assert.equal(storedPresets['Bridge sketch'].model_overrides.steps, 1);
     assert.equal(storedPresets['Bridge sketch'].loras.length, 2);
     assert.deepEqual(storedPresets['Bridge sketch copy'], storedPresets['Bridge sketch']);
     await controls.getByRole('button', { name: 'Generate Sketch to Art', exact: true }).click();
     await controls.getByText('AI layer added · Save to project to preserve it.', { exact: true }).waitFor({ timeout: 30000 });
     assert.equal(queued.length, 1); assert.equal(uploads.length, 1); assert.equal(uploads[0].width, 96); assert.equal(uploads[0].height, 96);
-    const sampler = Object.values(queued[0].prompt).find(n => n.class_type === 'KSampler'); assert.equal(sampler.inputs.steps, 1); assert.equal(sampler.inputs.denoise, .45);
+    const scheduler = Object.values(queued[0].prompt).find(n => n.class_type === 'BasicScheduler'); assert.equal(scheduler.inputs.steps, 8); assert.equal(scheduler.inputs.denoise, .45);
     const blended = await frame.evaluate(async () => {
         const project = await editor.readPSD(await (await editor.getPSD()).arrayBuffer());
         const bitmap = await createImageBitmap(await editor.getPNG()), canvas = document.createElement('canvas'); canvas.width = bitmap.width; canvas.height = bitmap.height;
@@ -299,7 +306,6 @@ try {
     if (process.argv[4]) {
         await choose(controls, 'Drawing workflow', 'manga');
         const manga = dialog.getByRole('complementary', { name: 'Art to Manga Panel controls', exact: true });
-        assert.equal(await manga.getByLabel('Manga workflow', { exact: true }).inputValue(), 'lite');
         assert.equal(await manga.getByLabel('Realtime on stroke release', { exact: true }).isVisible(), false);
         await manga.getByRole('button', { name: 'Generate Art to Manga Panel', exact: true }).click();
         await manga.getByText('AI layer added · Save to project to preserve it.', { exact: true }).waitFor();
@@ -329,17 +335,6 @@ try {
         await manga.getByLabel('Live preview on canvas', { exact: true }).uncheck();
         // The bridge receives postMessage asynchronously, so wait for the overlay to clear instead of reading it once.
         await frame.waitForFunction(() => window.previews.at(-1) === null, null, { timeout: 5000 }).catch(() => assert.fail('Turning the preview off clears the canvas overlay'));
-        await manga.getByLabel('Manga workflow', { exact: true }).selectOption('qwen');
-        await manga.locator('summary').filter({ hasText: 'Models and advanced settings' }).click();
-        for (const [label, node, key] of [['Diffusion model', 'UNETLoader', 'unet_name'], ['Text encoder', 'CLIPLoader', 'clip_name'], ['VAE', 'VAELoader', 'vae_name']]) {
-            await manga.getByLabel(label, { exact: true }).fill(options(defs, node, key)[0]);
-            await manga.getByLabel(label, { exact: true }).press('Tab');
-        }
-        await manga.getByRole('button', { name: 'Generate Art to Manga Panel', exact: true }).click();
-        await manga.getByText('AI layer added · Save to project to preserve it.', { exact: true }).waitFor();
-        const full = Object.values(queued.at(-1).prompt);
-        assert(full.some(n => n.class_type === 'ManualSigmas')); assert(full.some(n => n.class_type === 'MangaFinish'));
-        assert.equal((await layers()).length, 4, 'Manga updates its own layer');
         await choose(manga, 'Drawing workflow', 'sketch');
         assert.equal(await controls.getByLabel('Denoise', { exact: true }).inputValue(), '0.45');
         await choose(controls, 'Drawing workflow', 'bbox');
@@ -348,7 +343,7 @@ try {
         await page.waitForTimeout(100);
         assert.equal(await viewPixels(), 0, 'BBox to Image hides the sketch region guide');
         await bbox.locator('summary').filter({ hasText: 'Models and advanced settings' }).click();
-        for (const [label, node, key] of [['Diffusion model', 'UNETLoader', 'unet_name'], ['Text encoder', 'CLIPLoader', 'clip_name'], ['VAE', 'VAELoader', 'vae_name'], ['Eight-step LoRA', 'LoraLoaderModelOnly', 'lora_name']]) {
+        for (const [label, node, key] of [['Diffusion model', 'UNETLoader', 'unet_name'], ['Text encoder', 'CLIPLoader', 'clip_name'], ['VAE', 'VAELoader', 'vae_name']]) {
             await bbox.getByLabel(label, { exact: true }).fill(options(defs, node, key)[0]);
             await bbox.getByLabel(label, { exact: true }).press('Tab');
         }
@@ -405,24 +400,10 @@ try {
         assert.equal(layerNames.length, 5); assert(layerNames.at(-1).startsWith('BBox to Image'));
         await page.waitForTimeout(700);
         assert.equal((await (await fetch(`${backend.url}/anima-manga-maker/projects/${backend.project}`)).json()).workspace.bbox_panels.boxes.length, 1);
-        assert.equal(await bbox.getByLabel('BBox engine', { exact: true }).inputValue(), 'moss');
-        await bbox.getByLabel('BBox engine', { exact: true }).selectOption('qwen');
-        assert.equal(await bbox.getByLabel('Box 1 description', { exact: true }).inputValue(), 'A girl with fennec ears', 'Boxes are shared by every engine');
-        await bbox.locator('summary').filter({ hasText: 'Models and advanced settings' }).click();
-        for (const [label, node, key] of [['Diffusion model', 'UNETLoader', 'unet_name'], ['Text encoder', 'CLIPLoader', 'clip_name'], ['VAE', 'VAELoader', 'vae_name']]) {
-            await bbox.getByLabel(label, { exact: true }).fill(options(defs, node, key)[0]);
-            await bbox.getByLabel(label, { exact: true }).press('Tab');
-        }
+        await choose(bbox, 'Transparency', 'chromakey');
         await bbox.getByRole('button', { name: 'Generate BBox to Image', exact: true }).click();
         await bbox.getByText('AI layer added · Save to project to preserve it.', { exact: true }).waitFor();
-        const qwen = queued.at(-1).prompt, layoutId = Object.keys(qwen).find(id => qwen[id].class_type === 'MOSSImageLayoutPrompt');
-        assert.deepEqual(Object.values(qwen).find(n => n.class_type === 'TextEncodeQwenImage21').inputs.prompt, [layoutId, 0], 'Qwen receives the MOSS layout prompt');
-        assert.equal(Object.values(qwen).find(n => n.class_type === 'CreateBoundingBoxes').inputs.editor_state.__value__[0].metadata.desc, 'A girl with fennec ears');
-        assert.equal((await frame.evaluate(async () => (await editor.readPSD(await (await editor.getPSD()).arrayBuffer())).layers.length)), 5, 'Each engine updates the same BBox layer');
-        await choose(bbox, 'Transparency', 'native');
-        await bbox.getByRole('button', { name: 'Generate BBox to Image', exact: true }).click();
-        await bbox.getByText('AI layer added · Save to project to preserve it.', { exact: true }).waitFor();
-        assert.match(Object.values(queued.at(-1).prompt).find(n => n.class_type === 'MOSSImageLayoutPrompt').inputs.prompt, /transparent background/);
+        assert.match(Object.values(queued.at(-1).prompt).find(n => n.class_type === 'MOSSImageLayoutPrompt').inputs.prompt, /#1E0050/);
         const box = (await frame.evaluate(() => window.guides))[0];
         const split = await frame.evaluate(async ({ x, y, width, height }) => (await editor.readPSD(await (await editor.getPSD()).arrayBuffer())).layers.map(layer => {
             const canvas = document.createElement('canvas'); canvas.width = canvas.height = 256; const ctx = canvas.getContext('2d'); ctx.drawImage(layer.image, 0, 0);
@@ -463,7 +444,6 @@ try {
         assert.deepEqual(await boxLayerAlpha([[grown.x + grown.width - 3, grown.y + grown.height - 3]]), [255], 'Resizing a box scales its layer');
         await bbox.getByLabel('Draw boxes on canvas', { exact: true }).uncheck();
         await choose(bbox, 'Transparency', '');
-        await bbox.getByLabel('BBox engine', { exact: true }).selectOption('moss');
         await choose(bbox, 'Drawing workflow', 'sketch');
     }
     await dialog.getByRole('button', { name: 'Save to project', exact: true }).click();
@@ -475,8 +455,8 @@ try {
     const graphAfter = await page.evaluate(() => window.comfyAPI.app.app.graph.serialize());
     delete graphBefore.extra.k2cf_state_id; delete graphAfter.extra.k2cf_state_id; assert.deepEqual(graphAfter, graphBefore);
     assert.deepEqual(errors, []);
-    if (process.argv[4]) console.log('Art to Manga Panel passed: Lite/Qwen graphs, editable layer reuse, preserved aspect ratio, undo/redo and independent Sketch settings.');
-    if (process.argv[4]) console.log('BBox to Image passed: boxes drawn, moved, resized, colored and undone on the Klecks canvas, excluded from drawing history and exports, MOSS layout prompt for MOSS and Qwen without uploads, shared boxes, editable layer and saved boxes.');
+    if (process.argv[4]) console.log('Art to Manga Panel passed: Manga-Lite graphs, editable layer reuse, preserved aspect ratio, undo/redo and independent Sketch settings.');
+    if (process.argv[4]) console.log('BBox to Image passed: boxes drawn, moved, resized, colored and undone on the Klecks canvas, excluded from drawing history and exports, MOSS layout prompt for Anima without uploads, editable layer and saved boxes.');
     console.log('Sketch to Art passed: mask crop/stitch, protected holes, repeated masked layer updates and native undo,  whole-canvas/region pixels, feather and 50% opacity, editable reused layer with native undo/redo, sampler settings, release-only pen realtime, one job at a time, stale result skipped, targeted cancel, layered save and unchanged Comfy graph.');
 } catch (error) {
     await page.screenshot({ path: '/tmp/manga-sketch-error.png' }); console.error((await page.locator('.amm-studio').innerText().catch(() => 'Studio closed')).slice(-9000), errors); throw error;

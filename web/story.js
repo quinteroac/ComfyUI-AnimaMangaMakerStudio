@@ -194,8 +194,8 @@ export class StoryStudio {
     }
     available(id) { return this.studio.project.assets.some(a => a.id === id && !a.deleted && !a.missing); }
     toReferences(c) {
-        const engine = this.studio.state('references').engine, cfg = this.studio.config('references'), style = cfg.prompt_sections?.style?.trim();
-        cfg.prompt_sections = { ...referencePresets.Character.prompt_sections, ...(engine === 'krea_edit' ? { task: 'IMAGE_EDIT' } : {}), subject: [c.name, c.role].filter(Boolean).join(', '),
+        const cfg = this.studio.config('references'), style = cfg.prompt_sections?.style?.trim();
+        cfg.prompt_sections = { ...referencePresets.Character.prompt_sections, subject: [c.name, c.role].filter(Boolean).join(', '),
             appearance: c.visual_prompt.trim() || c.appearance, ...(style ? { style } : {}) };
         cfg.prompt = '';
         this.studio.presetChanged('references'); this.studio.rebuild('references'); this.studio.switch('references');
@@ -204,11 +204,11 @@ export class StoryStudio {
     toPanels(panel) {
         const engine = this.studio.state('panels').engine, cfg = this.studio.config('panels'), style = cfg.prompt_sections?.style?.trim();
         const cast = panel.characters.map(id => this.story.characters.find(c => c.id === id)).filter(Boolean);
-        cfg.prompt_sections = { task: engine === 'krea_edit' ? 'IMAGE_EDIT' : 'TEXT_TO_IMAGE', subject: panel.description, appearance: cast.map(c => `${c.name}: ${c.visual_prompt.trim() || c.appearance}`).join('\n'),
+        cfg.prompt_sections = { task: 'TEXT_TO_IMAGE', subject: panel.description, appearance: cast.map(c => `${c.name}: ${c.visual_prompt.trim() || c.appearance}`).join('\n'),
             composition: shotPrompts[panel.shot], ...(style ? { style } : {}) };
         cfg.prompt = '';
         const references = cast.map(c => [c.portrait, ...c.references].find(id => this.available(id))).filter(Boolean);
-        if (!['moss', 'anima'].includes(engine) && references.length) cfg.references = engine === 'qwen' ? references : references.slice(0, 4);
+        if (engine === 'anima_ref' && references.length) cfg.references = references.slice(0, 4);
         this.studio.presetChanged('panels'); this.studio.rebuild('panels'); this.studio.switch('panels');
         this.studio.notify('Panel prompt ready. Generate it, then link the image to the script panel.');
     }

@@ -3,12 +3,14 @@ import asyncio
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import sys
 import signal
 import struct
 import tempfile
 import types
+import urllib.request
 
 from aiohttp import web
 from PIL import Image, ImageDraw
@@ -48,7 +50,7 @@ async def main():
         folder.get_folder_paths = lambda category: [str(root / 'models' / category)]
         folder.get_filename_list = lambda category: [str(p.relative_to(root / 'models' / category)) for p in (root / 'models' / category).rglob('*.safetensors')]
         folder.get_full_path = lambda category, name: str(root / 'models' / category / name)
-        definitions = json.loads(Path('/tmp/manga-object-info.json').read_text())
+        with urllib.request.urlopen(os.environ.get('COMFY_URL', 'http://127.0.0.1:8188') + '/object_info') as response: definitions = json.load(response)
         for category, node, field in [('diffusion_models', 'UNETLoader', 'unet_name'), ('text_encoders', 'CLIPLoader', 'clip_name'), ('vae', 'VAELoader', 'vae_name'), ('loras', 'LoraLoaderModelOnly', 'lora_name')]:
             spec = definitions[node]['input']['required'][field]; names = spec[0] if isinstance(spec[0], list) else spec[1]['options']
             for name in names:
@@ -76,18 +78,6 @@ async def main():
         routes = sys.modules['manga_test_plugin.routes']
         assistant = sys.modules['manga_test_plugin.assistant']
         assistant.WORKER = root / 'assistant_worker.py'; assistant.WORKER.write_text(FAKE_ASSISTANT)
-        def fixture_download(artifact, state):
-            target = root / 'models' / artifact['directory'] / artifact['filename']
-            target.parent.mkdir(parents=True, exist_ok=True); target.write_bytes(b'fixture')
-            state['received'] = artifact['size']
-        routes.model_downloads.download = fixture_download
-        @instance.routes.post('/test/model-missing/{engine}')
-        async def model_missing(request):
-            catalog = routes.model_downloads.catalog(); profile = catalog['profiles'][request.match_info['engine']]
-            for artifact in catalog['artifacts']:
-                if artifact['id'] in profile['artifacts'] and artifact['installed']:
-                    Path(folder.get_full_path(artifact['directory'], artifact['installed'])).unlink()
-            return web.json_response({})
         project = routes.store.create('Prueba de navegador')
         for i in range(8):
             image = Image.new('RGB', (320 + i * 10, 480), ('#e8d4b2' if i % 2 else '#d0deef'))

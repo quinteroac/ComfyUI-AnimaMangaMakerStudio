@@ -1,28 +1,23 @@
 import { initialSettings } from './prompts.js';
 
-export const modelFields = ['model', 'encoder', 'vae', 'identity_lora', 'accelerator_lora', 'encoder_type', 'analysis_encoder', 'analysis_encoder_type', 'weight_dtype', 'encoder_device', 'attention', 'cache_device', 'cache_dtype',
-    'ref_boost', 'ref_boost_a', 'fit_mode', 'grounding_px', 'grounding_system_prompt', 'steps', 'cfg', 'sampler', 'scheduler', 'shift', 'alpha_lora', 'alpha_vae', 'alpha_rgb_vae',
+export const modelFields = ['model', 'encoder', 'vae', 'encoder_type', 'weight_dtype', 'encoder_device', 'attention', 'steps', 'cfg', 'sampler', 'scheduler',
     'ref_adapter_lora', 'ref_guidance', 'pag_scale'];
 const defined = value => value !== undefined && value !== null && value !== '';
 export const modelValues = value => Object.fromEntries(modelFields.filter(key => defined(value?.[key])).map(key => [key, structuredClone(value[key])]));
 
-export function globalModels(settings, catalog) {
+// Anima Turbo defaults from the local anima_ref_adapter_pag_multi and Anima-Komikku workflows; every field stays editable in Settings.
+const animaModels = { model: 'anima/anima-turbo-v1.0-int8-convrot.safetensors', encoder: 'qwen_3_06b_base.safetensors', vae: 'qwen_image_vae.safetensors',
+    encoder_type: 'stable_diffusion', weight_dtype: 'default', encoder_device: 'default', steps: 8, cfg: 1 };
+export const profiles = {
+    anima: { name: 'Anima', settings: { ...animaModels, sampler: 'er_sde', scheduler: 'simple' } },
+    anima_ref: { name: 'Anima Ref', settings: { ...animaModels, sampler: 'euler', scheduler: 'simple', ref_adapter_lora: 'anima_ref_adapter_pilot_r32.safetensors', ref_guidance: 1, pag_scale: 1.3 } },
+};
+
+export function globalModels(settings) {
     settings.models ||= {};
-    for (const [engine, profile] of Object.entries(catalog.profiles)) {
-        if (settings.models[engine]) {
-            const { encoding, adapter, ...stored } = settings.models[engine];
-            // The removed Qwen-VL 8B bridge used an encoder that does not load as native Krea2.
-            if (encoding === 'bridge' && engine.startsWith('krea')) { delete stored.encoder; delete stored.encoder_type; }
-            settings.models[engine] = { ...modelValues(initialSettings(engine)), ...profile.settings, ...stored, engine };
-        } else {
-            const legacy = Object.entries(settings.defaults || {}).find(([scope, value]) => scope.endsWith(`:${engine}`) && (value.model || value.encoder || value.vae))?.[1];
-            settings.models[engine] = { ...modelValues(initialSettings(engine)), ...profile.settings, ...modelValues(legacy), engine };
-        }
-        for (const artifact of catalog.artifacts) {
-            for (const key of ['model', 'encoder', 'vae', 'identity_lora']) if (settings.models[engine][key] === artifact.filename && artifact.installed) settings.models[engine][key] = artifact.installed;
-        }
+    for (const [engine, profile] of Object.entries(profiles)) {
+        settings.models[engine] = { ...modelValues(initialSettings(engine)), ...profile.settings, ...settings.models[engine], engine };
     }
-    for (const defaults of Object.values(settings.defaults || {})) for (const key of modelFields) delete defaults[key];
 }
 
 export function inheritModels(config, global, engine) {
@@ -32,11 +27,8 @@ export function inheritModels(config, global, engine) {
         if (config.model || config.encoder || config.vae) {
             for (const [key, value] of Object.entries(modelValues(config))) if (value !== base[key]) config.model_overrides[key] = value;
         }
-        if (config.analysis_encoder) { config.model_overrides.analysis_encoder = config.analysis_encoder; config.model_overrides.analysis_encoder_type = config.analysis_encoder_type; }
     }
     for (const key of modelFields) config[key] = defined(config.model_overrides[key]) ? config.model_overrides[key] : base[key];
-    config.analysis_encoder = defined(config.model_overrides.analysis_encoder) ? config.model_overrides.analysis_encoder : config.encoder;
-    config.analysis_encoder_type = defined(config.model_overrides.analysis_encoder_type) ? config.model_overrides.analysis_encoder_type : config.encoder_type;
     return config;
 }
 

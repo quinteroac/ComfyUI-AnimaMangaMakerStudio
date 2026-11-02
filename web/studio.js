@@ -1,19 +1,17 @@
-import { analysisInstruction } from './page-analysis.js';
 import { api } from '../../scripts/api.js';
 import { uuid, el, button, iconButton, field, request, assetUrl, download, chooseFile, sizeControls } from './client.js';
 import { sizeSettings, sizeLabel } from './size.js';
-import { options, defaultAttention, alphaMethods, initialSettings, buildPrompt, composePrompt, promptSections, referencePrompt, parsePrompt, referencePresets, refinementPresets, textGeneratorDefaults, textInstruction } from './prompts.js';
+import { options, defaultAttention, alphaMethods, initialSettings, buildPrompt, composePrompt, promptSections, referencePrompt, parsePrompt, referencePresets, textGeneratorDefaults, textInstruction } from './prompts.js';
 import { newPage, normalizePage, PageEditor } from './editor.js';
-import { modelFields, globalModels, inheritModels, applyPreset, savedPreset } from './models.js';
+import { modelFields, profiles, globalModels, inheritModels, applyPreset, savedPreset } from './models.js';
 import { openDrawing } from './drawing.js';
 import { combo, segmented, slider, toggle, seed, resizer, summarize } from './controls.js';
 import { StoryStudio } from './story.js';
 import { assistantSettings } from './assistant.js';
-import { styleSource, openStylePicker } from './style-picker.js';
+import { openStylePicker } from './style-picker.js';
 
-const spaces = { story: 'Story', style: 'Style', references: 'References', panels: 'Panels', refine: 'Refinement', design: 'Page layout', finish: 'Finishing' };
-const engines = { krea: 'Krea2', krea_edit: 'Krea2 Edit', qwen: 'Qwen Image 2.1', moss: 'moss', anima: 'anima', anima_edit: 'Anima Ref' };
-const styleEngines = { anima: 'anima', krea: 'Krea2', qwen: 'Qwen Image 2.1', moss: 'moss' };
+const spaces = { story: 'Story', style: 'Style', references: 'References', panels: 'Panels', design: 'Page layout' };
+const engines = { anima: 'Anima', anima_ref: 'Anima Ref' };
 const textTasks = { enhance: 'Enhance section', describe: 'Create reference prompt' };
 const clone = x => structuredClone(x);
 
@@ -41,9 +39,8 @@ export class Studio {
     }
     async action(fn) { try { return await fn(); } catch (e) { this.fail(e); } }
     async load() {
-        [this.settings, this.projects, this.defs, this.fonts, this.catalog] = await Promise.all([request('/settings'), request('/projects'), api.getNodeDefs(), request('/fonts'), request('/models')]);
-        globalModels(this.settings, this.catalog); this.pendingDownloads = new Set(); this.downloadPanels = new Set();
-        for (const [engine, state] of Object.entries(this.catalog.downloads)) if (['queued', 'downloading'].includes(state.state)) this.pendingDownloads.add(engine);
+        [this.settings, this.projects, this.defs, this.fonts] = await Promise.all([request('/settings'), request('/projects'), api.getNodeDefs(), request('/fonts')]);
+        globalModels(this.settings);
         if (this.abort.signal.aborted) return;
         this.renderHeader(); this.renderNav();
         const id = localStorage.getItem('amm-project');
@@ -72,7 +69,7 @@ export class Studio {
     }
     closeAssetMenu() { if (this.assetMenu?.matches(':popover-open')) this.assetMenu.hidePopover(); this.assetMenu = null; }
     resetViews() { this.closeAssetMenu(); this.observers.forEach(o => o.disconnect()); this.observers = []; this.editor?.destroy(); this.editor = null; this.storyView?.destroy(); this.storyView = null; this.views.clear(); this.galleryRefresh.clear(); this.referenceRefresh.clear(); this.pendingRefresh.clear(); this.body.replaceChildren(); }
-    state(space = this.active) { return this.project.workspace[space] ||= { engine: space === 'finish' ? 'qwen' : 'krea', selection: [], references: [], source: '', search: '', sort: 'newest', filter: 'all', page: 0 }; }
+    state(space = this.active) { return this.project.workspace[space] ||= { engine: 'anima', selection: [], references: [], search: '', sort: 'newest', filter: 'all', page: 0 }; }
     config(space = this.active, engine = this.state(space).engine) {
         const scope = `${space}:${engine}`;
         const config = this.project.config[scope] ||= { ...initialSettings(engine), ...clone(this.settings.defaults[scope] || {}) };
@@ -81,42 +78,37 @@ export class Studio {
         return inheritModels(config, this.settings.models[engine], engine);
     }
     // Anima reads booru tags and free text alike, so it inherits both project styles, tags first.
-    projectStyle(engine) {
-        const sources = styleSource(engine) === 'animadex' ? ['animadex', 'stylebook'] : [styleSource(engine)];
-        return sources.map(source => this.project.style?.[source]?.trim()).filter(Boolean).join('\n');
+    projectStyle() {
+        return ['animadex', 'stylebook'].map(source => this.project.style?.[source]?.trim()).filter(Boolean).join('\n');
     }
     // The operation's settings with the project style in the Style section, unless the operation overrides it.
     styled(cfg) {
-        const style = !cfg.style_override && this.projectStyle(cfg.engine);
+        const style = !cfg.style_override && this.projectStyle();
         return style ? { ...cfg, prompt_sections: { ...cfg.prompt_sections, style } } : cfg;
     }
     styleView(view) {
-        const space = 'style', state = this.state(space), style = this.project.style ||= {};
-        if (!styleEngines[state.engine]) state.engine = 'anima';
+        const space = 'style', style = this.project.style ||= {};
         const controls = el('aside', { class: 'amm-controls' }, el('h2', { text: 'Project style' }),
-            el('small', { text: 'References, panels, refinement and Sketch to Art use this style in the Style section unless an operation turns off "Use project style".' }));
+            el('small', { text: 'References, panels and Sketch to Art use this style in the Style section unless an operation turns off "Use project style".' }));
         const previewControls = el('div');
         const renderPreviewControls = () => {
-            const cfg = this.config(space); cfg.engine = state.engine;
+            const cfg = this.config(space, 'anima');
             previewControls.replaceChildren(); this.essentials(previewControls, cfg, space); this.runBar(previewControls, cfg, space, 'Generate preview');
             this.jobs();
         };
         // Other workspaces show the inherited style when they are next opened.
-        const changed = () => { for (const other of ['references', 'panels', 'refine', 'finish']) if (this.views.has(other)) this.rebuild(other); this.saveSoon(); renderPreviewControls(); };
-        for (const [source, label, engines] of [['animadex', 'Anime tags', 'Anima and Anima Ref'], ['stylebook', 'Natural-language style', 'all engines']]) {
+        const changed = () => { for (const other of ['references', 'panels']) if (this.views.has(other)) this.rebuild(other); this.saveSoon(); renderPreviewControls(); };
+        for (const [source, label] of [['animadex', 'Danbooru tags'], ['stylebook', 'Natural-language style']]) {
             const input = el('textarea', { value: style[source] || '', rows: 4, 'aria-label': label, oninput: e => { style[source] = e.target.value; this.saveSoon(); }, onchange: changed });
-            controls.append(field(`${label} · ${engines}`, input), iconButton(source === 'animadex' ? 'Browse Animadex styles and characters' : 'Browse Stylebook styles', 'image', () => openStylePicker(this, source, (key, update) => {
+            controls.append(field(label, input), iconButton(source === 'animadex' ? 'Browse Animadex styles and characters' : 'Browse Stylebook styles', 'image', () => openStylePicker(this, source, (key, update) => {
                 input.value = style[source] = update(input.value); changed();
             }), {}, true));
         }
-        const engine = el('select', { 'aria-label': 'Preview engine', onchange: e => { state.engine = e.target.value; this.saveSoon(); renderPreviewControls(); } },
-            ...Object.entries(styleEngines).map(([value, text]) => el('option', { value, text })));
-        engine.value = state.engine;
-        controls.append(el('h3', { text: 'Preview' }), el('small', { text: 'Generate test images to tune the style. Previews stay in ComfyUI\'s temp folder and are not saved to the project.' }), field('Engine', engine), previewControls);
+        controls.append(el('h3', { text: 'Preview' }), el('small', { text: 'Generate test images to tune the style. Previews stay in ComfyUI\'s temp folder and are not saved to the project.' }), previewControls);
         const gallery = el('div', { class: 'amm-style-previews' });
         this.renderStylePreviews = () => {
             const previews = this.stylePreviews.filter(p => p.project === this.project.id);
-            gallery.replaceChildren(...previews.length ? previews.map(p => el('figure', {}, el('img', { src: p.url, alt: `Style preview · ${engines[p.engine]}` }), el('figcaption', { text: engines[p.engine] })))
+            gallery.replaceChildren(...previews.length ? previews.map(p => el('figure', {}, el('img', { src: p.url, alt: 'Style preview' })))
                 : [el('div', { class: 'amm-empty', text: 'Generated previews appear here. They are discarded when you close Studio.' })]);
         };
         const area = el('section', { class: 'amm-preview-area' }, el('div', { class: 'amm-row' }, button('Clear previews', () => { this.stylePreviews = this.stylePreviews.filter(p => p.project !== this.project.id); this.renderStylePreviews(); })), gallery);
@@ -132,8 +124,6 @@ export class Studio {
             if (this.active === 'design') this.design(view);
             else if (this.active === 'story') this.storyView = new StoryStudio(this, view);
             else if (this.active === 'style') this.styleView(view);
-            else if (this.active === 'refine') this.refine(view);
-            else if (this.active === 'finish') this.finish(view);
             else this.generateView(view, this.active);
         } else if (this.active === 'story') this.storyView.render();
         view.hidden = false;
@@ -219,10 +209,10 @@ export class Studio {
         };
         engineSelect.onchange = render; render();
         this.globalModelRender = render;
-        const models = el('div', {}, el('small', { text: 'One model configuration per engine, shared across references, panels, refinement and finishing. Individual fields and presets override only the values they define.' }), field('Global model engine', engineSelect), controls);
+        const models = el('div', {}, el('small', { text: 'One model configuration per engine, shared across references, panels, style previews and the drawing editor. Individual fields and presets override only the values they define.' }), field('Global model engine', engineSelect), controls);
         const transfer = el('div', { class: 'amm-button-grid' }, button('Export global settings', () => download('anima-manga-maker-config.json', value)), button('Import global settings', () => chooseFile('.json', files => this.action(async () => {
                 const imported = JSON.parse(await files[0].text()); if (!imported.presets || (!imported.models && !imported.defaults)) throw new Error('Invalid settings file');
-                value.defaults = imported.defaults || {}; value.models = imported.models || {}; globalModels(value, this.catalog); value.presets = imported.presets; Object.assign(text, textGeneratorDefaults, imported.text_generator || {}); renderText(); render();
+                value.defaults = imported.defaults || {}; value.models = imported.models || {}; globalModels(value); value.presets = imported.presets; Object.assign(text, textGeneratorDefaults, imported.text_generator || {}); renderText(); render();
             }))), button('Export project settings', () => download('manga-project-settings.json', { config: this.project?.config || {}, presets: this.project?.presets || {}, layouts: this.project?.layouts || {} })),
             button('Import project settings', () => chooseFile('.json', files => this.action(async () => {
                 if (!this.project) throw new Error('Open a project'); const imported = JSON.parse(await files[0].text());
@@ -232,7 +222,7 @@ export class Studio {
         const sections = [['General', general], ['Text generator', textControls], ['Story assistant', assistantControls], ['Models', models], ['Import and export', transfer]].map(([title, content]) => el('section', { 'aria-label': title }, el('h3', { text: title }), content));
         const form = el('div', { class: 'amm-settings' }, el('nav', { class: 'amm-settings-nav', 'aria-label': 'Settings sections' },
             ...sections.map(section => button(section.getAttribute('aria-label'), () => section.scrollIntoView({ block: 'start', behavior: 'smooth' })))), el('div', { class: 'amm-settings-sections' }, ...sections));
-        const dialog = this.modal('Global settings', form, button('Refresh models and nodes', () => this.action(async () => { this.defs = await api.getNodeDefs(); this.catalog = await request('/models'); renderText(); render(); })),
+        const dialog = this.modal('Global settings', form, button('Refresh models and nodes', () => this.action(async () => { this.defs = await api.getNodeDefs(); renderText(); render(); })),
             button('Save global settings', () => this.action(async () => { let savedBeforeMove = true;
                 try { await this.flush(); } catch (error) { if (value.root === this.settings.root) throw error; savedBeforeMove = false; }
                 this.settings = await request('/settings', value, 'POST'); this.projects = await request('/projects');
@@ -255,18 +245,7 @@ export class Studio {
             combo('Text encoder', options(this.defs, 'CLIPLoader', 'clip_name'), cfg.encoder, set('encoder')),
             encoderType,
             combo('VAE', options(this.defs, 'VAELoader', 'vae_name'), cfg.vae, set('vae')));
-        if (engine === 'moss') technical.append(combo('Eight-step LoRA', options(this.defs, 'LoraLoaderModelOnly', 'lora_name'), cfg.accelerator_lora, set('accelerator_lora')));
-        if (engine === 'krea_edit' && space !== 'sketch') technical.append(combo('Identity Edit LoRA', options(this.defs, 'LoraLoaderModelOnly', 'lora_name'), cfg.identity_lora, set('identity_lora')));
-        if (engine === 'krea' || engine === 'krea_edit') {
-            const edit = el('details', {}, el('summary', { text: 'Krea2 editing · references' }));
-            for (const [label, key, step, range] of [['Last reference / subject fidelity', 'ref_boost', 0.01, [0, 2]], ['Earlier references / scene fidelity', 'ref_boost_a', 0.01, [0, 2]], ['Maximum grounding dimension · px', 'grounding_px', 64, [0, 2048]]]) {
-                edit.append(slider(label, el('input', { type: 'number', value: cfg[key] ?? (key === 'grounding_px' ? 768 : 1), step, onchange: e => set(key)(Number(e.target.value)) }), range));
-            }
-            edit.append(combo('Reference fit', options(this.defs, 'Krea2EditModelPatch', 'fit_mode'), cfg.fit_mode || 'fit', set('fit_mode')),
-                field('Grounding system prompt · optional', el('textarea', { value: cfg.grounding_system_prompt || '', oninput: e => set('grounding_system_prompt')(e.target.value) })));
-            if (space !== 'refine') technical.append(edit);
-        }
-        if (engine === 'anima_edit') {
+        if (engine === 'anima_ref') {
             const adapter = el('details', {}, el('summary', { text: 'Anima reference adapter' }),
                 combo('Ref Adapter LoRA', options(this.defs, 'AnimaRefAdapterLoader', 'lora_name'), cfg.ref_adapter_lora, set('ref_adapter_lora')));
             for (const [label, key, step, range] of [['Reference guidance', 'ref_guidance', 0.1, [0, 10]], ['Safe PAG scale · 0 disables', 'pag_scale', 0.1, [0, 5]]]) {
@@ -276,63 +255,24 @@ export class Studio {
         }
         technical.append(combo('Weight precision', options(this.defs, 'UNETLoader', 'weight_dtype'), cfg.weight_dtype, set('weight_dtype')),
             combo('Encoder device', options(this.defs, 'CLIPLoader', 'device'), cfg.encoder_device, set('encoder_device')));
-        if (this.defs.ModelAttentionBackend) technical.append(combo(engine === 'qwen' ? 'Attention · leave empty for ComfyUI default' : 'Attention backend', options(this.defs, 'ModelAttentionBackend', 'attention'), cfg.attention || defaultAttention(this.defs, engine), set('attention')));
-        if (engine === 'qwen' && this.defs.QwenImage21Cache) technical.append(combo('Cache device', options(this.defs, 'QwenImage21Cache', 'device'), cfg.cache_device, set('cache_device')), combo('Cache precision', options(this.defs, 'QwenImage21Cache', 'dtype'), cfg.cache_dtype, set('cache_dtype')));
-        technical.append(button('Refresh lists', () => this.action(async () => { this.defs = await api.getNodeDefs(); this.catalog = await request('/models'); restoreView(); })));
+        if (this.defs.ModelAttentionBackend) technical.append(combo('Attention backend', options(this.defs, 'ModelAttentionBackend', 'attention'), cfg.attention || defaultAttention(this.defs, engine), set('attention')));
+        technical.append(button('Refresh lists', () => this.action(async () => { this.defs = await api.getNodeDefs(); restoreView(); })));
         if (!expanded) technical.append(button('Use global model configuration', () => this.action(async () => {
             this.settings = await request('/settings');
-            globalModels(this.settings, this.catalog); cfg.model_overrides = {}; inheritModels(cfg, this.settings.models[engine], engine);
+            globalModels(this.settings); cfg.model_overrides = {}; inheritModels(cfg, this.settings.models[engine], engine);
             changed(); restoreView();
         })));
-        if (space !== 'sketch') this.officialModelControls(technical, engine);
+        if (space !== 'sketch') technical.append(button('Use default models and sampling', () => this.action(async () => { await this.useDefaultModels(engine); this.resetViews(); this.switch(this.active); })));
         host.append(technical);
         if (!expanded) this.loraControls(host, cfg, changed, this.project.presets, `${space}:${engine}`);
         if (expanded) this.samplingControls(host, cfg, engine, changed, space, true);
     }
-    officialModelControls(host, engine) {
-        const panel = el('div', { class: 'amm-official-models' }); host.append(panel);
-        const render = () => {
-            const profile = this.catalog.profiles[engine], state = this.catalog.downloads[engine];
-            if (profile.local) {
-                panel.replaceChildren(el('h4', { text: 'Local workflow setup' }), el('p', { text: `${profile.workflow} · uses installed weights. Select models above if their filenames differ.` }),
-                    button('Use workflow models and sampling', () => this.action(async () => { await this.useOfficialModels(engine); this.resetViews(); this.switch(this.active); render(); })));
-                return;
-            }
-            const missing = this.catalog.artifacts.filter(a => profile.artifacts.includes(a.id) && !a.installed);
-            const active = state && ['queued', 'downloading'].includes(state.state);
-            panel.replaceChildren(el('h4', { text: 'Official model setup' }), el('a', { text: 'Workflow / recommended settings', href: profile.workflow, target: '_blank', rel: 'noopener noreferrer' }),
-                el('p', { text: missing.length ? `Missing official weights: ${missing.map(a => `${a.filename} (${(a.size / 1e9).toFixed(2)} GB)`).join(', ')}. Downloads start only when you click the button.` : 'All official weights are installed.' }),
-                state ? el('p', { role: 'status', text: state.state === 'error' ? `Download failed: ${state.error}` : active ? `${state.state} · ${state.filename || profile.name} · ${(state.received / 1e9).toFixed(2)} / ${(state.total / 1e9).toFixed(2)} GB` : 'Download complete.' }) : null,
-                missing.length ? button('Download missing official weights', () => this.action(async () => {
-                    this.catalog.downloads[engine] = await request('/models/download', { engine }, 'POST'); this.pendingDownloads.add(engine); render();
-                }), { disabled: !!active }) : button('Use official models and recommended sampling', () => this.action(async () => { await this.useOfficialModels(engine); this.resetViews(); this.switch(this.active); render(); })));
-        };
-        render(); this.downloadPanels.add({ panel, render });
-    }
-    async useOfficialModels(engine) {
-        const settings = await request('/settings'); globalModels(settings, this.catalog);
-        const values = clone(this.catalog.profiles[engine].settings);
-        for (const artifact of this.catalog.artifacts) for (const key of ['model', 'encoder', 'vae', 'identity_lora']) if (values[key] === artifact.filename && artifact.installed) values[key] = artifact.installed;
-        Object.assign(settings.models[engine], values);
+    async useDefaultModels(engine) {
+        const settings = await request('/settings'); globalModels(settings);
+        Object.assign(settings.models[engine], clone(profiles[engine].settings));
         this.settings = await request('/settings', settings, 'POST'); this.defs = await api.getNodeDefs();
         if (this.globalDraft) { this.globalDraft.models[engine] = clone(this.settings.models[engine]); this.globalModelRender(); }
-        this.notify(`${engines[engine]} · Workflow models and sampling applied globally`);
-    }
-    async pollDownloads() {
-        if (this.downloadPolling || !this.pendingDownloads.size) return;
-        this.downloadPolling = true;
-        try {
-            this.catalog = await request('/models');
-            for (const engine of this.pendingDownloads) {
-                const state = this.catalog.downloads[engine]?.state;
-                if (state === 'complete') {
-                    await this.useOfficialModels(engine); this.pendingDownloads.delete(engine);
-                    this.resetViews(); this.switch(this.active);
-                } else if (state === 'error') this.pendingDownloads.delete(engine);
-            }
-            for (const view of this.downloadPanels) if (view.panel.isConnected) view.render(); else this.downloadPanels.delete(view);
-        } catch (error) { this.fail(error); }
-        finally { this.downloadPolling = false; }
+        this.notify(`${engines[engine]} · Default models and sampling applied globally`);
     }
     loraControls(host, cfg, changed, presetStore = this.project.presets, scope = `${this.active}:${cfg.engine}`) {
         cfg.loras ||= [];
@@ -344,11 +284,10 @@ export class Studio {
                     iconButton('Move LoRA up', 'up', () => { [cfg.loras[index - 1], cfg.loras[index]] = [l, cfg.loras[index - 1]]; changed(); refresh(); }, { disabled: !index }),
                     iconButton('Move LoRA down', 'down', () => { [cfg.loras[index + 1], cfg.loras[index]] = [l, cfg.loras[index + 1]]; changed(); refresh(); }, { disabled: index === cfg.loras.length - 1 }),
                     iconButton('Remove', 'trash', () => { cfg.loras.splice(index, 1); changed(); refresh(); })),
-                combo('LoRA file', options(this.defs, 'LoraLoader', 'lora_name'), l.name, value => { l.name = value; changed(); }),
-                slider('Model strength', el('input', { type: 'number', value: l.model, step: 0.05, onchange: e => { l.model = Number(e.target.value); changed(); } }), [0, 2]),
-                ['krea_edit', 'moss', 'anima', 'anima_edit'].some(engine => scope.endsWith(`:${engine}`)) ? null : slider('Encoder strength', el('input', { type: 'number', value: l.clip, step: 0.05, onchange: e => { l.clip = Number(e.target.value); changed(); } }), [0, 2]))));
+                combo('LoRA file', options(this.defs, 'LoraLoaderModelOnly', 'lora_name'), l.name, value => { l.name = value; changed(); }),
+                slider('Model strength', el('input', { type: 'number', value: l.model, step: 0.05, onchange: e => { l.model = Number(e.target.value); changed(); } }), [0, 2]))));
         }; refresh();
-        details.append(rows, iconButton('Add LoRA', 'plus', () => { cfg.loras.push({ enabled: true, name: '', model: 1, clip: 1 }); changed(); refresh(); }, {}, true), el('div', { class: 'amm-row' },
+        details.append(rows, iconButton('Add LoRA', 'plus', () => { cfg.loras.push({ enabled: true, name: '', model: 1 }); changed(); refresh(); }, {}, true), el('div', { class: 'amm-row' },
             button('Save LoRA preset', () => this.ask('LoRA preset name', '', name => { const key = scope; (presetStore[key] ||= {})[`LoRAs · ${name}`] = { loras: clone(cfg.loras) }; this.saveSoon(); })),
             button('Load LoRA preset', () => {
                 const presets = { ...(this.settings.presets[scope] || {}), ...(presetStore[scope] || {}) };
@@ -366,38 +305,21 @@ export class Studio {
         const describe = () => summarize(group, `${cfg.steps} steps · ${cfg.sampler || 'no sampler'}`);
         const set = (key, value) => { cfg[key] = value; if (!global && modelFields.includes(key)) (cfg.model_overrides ||= {})[key] = value; describe(); changed(); };
         describe();
-        for (const [label, key, step, range] of [['Steps', 'steps', 1, [1, 50]], ...(['qwen', 'krea_edit', 'moss', 'anima', 'anima_edit'].includes(engine) ? [['CFG', 'cfg', 0.1, [0, 10]]] : []), ...(engine === 'krea' && space === 'refine' ? [['Denoise', 'denoise', 0.01, [0, 1]]] : [])]) {
+        for (const [label, key, step, range] of [['Steps', 'steps', 1, [1, 50]], ['CFG', 'cfg', 0.1, [0, 10]]]) {
             group.append(slider(label, el('input', { type: 'number', value: cfg[key], step, onchange: e => set(key, Number(e.target.value)) }), range));
         }
-        if (engine === 'krea' || engine === 'krea_edit') group.append(field('Shift', el('input', { type: 'number', 'aria-label': 'Shift', value: cfg.shift ?? '', step: 0.01,
-            placeholder: 'Model default', onchange: e => { const value = e.target.value; if (!value || Number.isFinite(Number(value))) set('shift', value === '' ? '' : Number(value)); } }),
-            'Empty uses the model default, or the global Shift when configured.'));
-        if ((engine === 'krea_edit' || (engine === 'anima_edit' && space === 'sketch')) && !global) {
-            const denoise = slider('Denoise', el('input', { type: 'number', 'aria-label': 'Denoise', value: cfg.denoise, min: 0, max: 1, step: 0.05,
-                onchange: e => { const value = Number(e.target.value); if (Number.isFinite(value)) set('denoise', value); } }), [0, 1], 'Lower values preserve more of the initial latent image.');
-            denoise.classList.add('amm-edit-denoise'); denoise.hidden = space !== 'sketch' && !cfg.latent_reference; group.append(denoise);
-        }
+        if (space === 'sketch' && !global) group.append(slider('Denoise', el('input', { type: 'number', 'aria-label': 'Denoise', value: cfg.denoise, min: 0, max: 1, step: 0.05,
+            onchange: e => { const value = Number(e.target.value); if (Number.isFinite(value)) set('denoise', value); } }), [0, 1], 'Lower values preserve more of the drawing.'));
         group.append(combo('Sampler', options(this.defs, 'KSampler', 'sampler_name'), cfg.sampler, value => set('sampler', value)),
             combo('Scheduler', options(this.defs, 'KSampler', 'scheduler'), cfg.scheduler, value => set('scheduler', value)));
-        if (['qwen', 'anima', 'anima_edit'].includes(engine) && !global) group.append(field('Negative prompt', el('textarea', { value: cfg.negative, oninput: e => { cfg.negative = e.target.value; changed(); } })));
+        if (!global) group.append(field('Negative prompt', el('textarea', { value: cfg.negative, oninput: e => { cfg.negative = e.target.value; changed(); } })));
         host.append(group);
     }
     alphaControls(host, cfg, engine, changed) {
-        const methods = alphaMethods[engine];
-        if (!methods) return;
-        if (!methods.includes(cfg.alpha)) cfg.alpha = '';
-        const labels = { lora: 'Alpha LoRA', chromakey: 'Chroma key', native: 'Native RGBA' };
-        const set = key => value => { cfg[key] = value; (cfg.model_overrides ||= {})[key] = value; changed(); };
-        const files = el('div');
-        const render = () => files.replaceChildren(...cfg.alpha !== 'lora' ? [] : [
-            combo('Alpha LoRA', options(this.defs, 'LoraLoaderModelOnly', 'lora_name'), cfg.alpha_lora, set('alpha_lora')),
-            ...engine === 'moss' ? [combo('RGBA VAE', options(this.defs, 'RGBAVAELoader', 'vae_name'), cfg.alpha_vae, set('alpha_vae'))]
-                : [combo('Alpha RGB VAE', options(this.defs, 'VAELoader', 'vae_name'), cfg.alpha_rgb_vae, set('alpha_rgb_vae')),
-                    combo('Alpha channel VAE', options(this.defs, 'VAELoader', 'vae_name'), cfg.alpha_vae, set('alpha_vae'))]]);
-        host.append(segmented('Transparency', [['', 'Off'], ...methods.map(value => [value, labels[value]])], cfg.alpha, value => { cfg.alpha = value; changed(); render(); }),
-            el('small', { text: engine === 'qwen' ? 'Qwen Image 2.1 decodes RGBA; the prompt asks for a transparent background.'
-                : 'Alpha LoRA decodes with alpha VAEs. Chroma key asks for a flat indigo background and removes it with VNCCS Chroma Key.' }), files);
-        render();
+        if (!alphaMethods[engine]) return;
+        if (!alphaMethods[engine].includes(cfg.alpha)) cfg.alpha = '';
+        host.append(segmented('Transparency', [['', 'Off'], ['chromakey', 'Chroma key']], cfg.alpha, value => { cfg.alpha = value; changed(); }),
+            el('small', { text: 'Chroma key asks for a flat indigo background and removes it with VNCCS Chroma Key.' }));
     }
     presetChanged(space, host = this.views.get(space)) {
         const state = this.state(space);
@@ -414,8 +336,7 @@ export class Studio {
             if (!e.target.value) { this.state(space).preset = ''; this.state(space).preset_modified = false; this.saveSoon(); refresh(); return; }
             const preset = named[e.target.value];
             const value = builtins[e.target.value] === preset ? { ...preset, prompt_sections: { ...cfg.prompt_sections, ...preset.prompt_sections,
-                ...(space === 'references' && cfg.prompt_sections?.style?.trim() ? { style: cfg.prompt_sections.style } : {}),
-                ...(cfg.engine === 'krea_edit' ? { task: 'IMAGE_EDIT' } : {}) } } : preset;
+                ...(space === 'references' && cfg.prompt_sections?.style?.trim() ? { style: cfg.prompt_sections.style } : {}) } } : preset;
             applyPreset(cfg, value); inheritModels(cfg, this.settings.models[cfg.engine], cfg.engine);
             this.state(space).preset = e.target.value; this.state(space).preset_modified = false; this.saveSoon(); refresh();
         } }, el('option', { value: '', text: 'Preset…' }), ...Object.keys(named).map(name => el('option', { value: name, text: name })));
@@ -423,7 +344,6 @@ export class Studio {
         if (select.value && this.state(space).preset_modified) select.selectedOptions[0].textContent = `${select.value} · Modified`;
         host.append(el('div', { class: 'amm-preset' }, field('Preset · changing settings creates a variant', select), el('div', { class: 'amm-row' }, iconButton('Save settings as preset', 'save', () => this.ask('Preset name', this.state(space).preset || '', name => { (this.project.presets[key] ||= {})[name] = savedPreset(cfg); this.state(space).preset = name; this.state(space).preset_modified = false; this.saveSoon(); refresh(); })),
             iconButton('Clone preset', 'copy', () => this.clonePreset(named, select.value, (name, value) => {
-                if (builtins[select.value] === named[select.value] && cfg.engine === 'krea_edit') value.prompt_sections.task = 'IMAGE_EDIT';
                 (this.project.presets[key] ||= {})[name] = value; this.state(space).preset = name; refresh();
             }), { disabled: !select.value }),
             iconButton('Export presets', 'download', () => download(`manga-${key.replace(':', '-')}-presets.json`, { scope: key, presets: named })), iconButton('Import presets', 'upload', () => chooseFile('.json', files => this.action(async () => {
@@ -433,21 +353,21 @@ export class Studio {
     }
     engineSelect(host, space) {
         const state = this.state(space);
-        const select = el('select', { 'aria-label': 'Engine', onchange: e => { state.engine = e.target.value; this.saveSoon(); this.rebuild(space); } }, el('option', { value: 'krea', text: 'Krea2' }),
-            ...(['references', 'panels'].includes(space) ? [el('option', { value: 'krea_edit', text: 'Krea2 · edit' }), ...['moss', 'anima', 'anima_edit'].map(value => el('option', { value, text: engines[value] }))] : []), el('option', { value: 'qwen', text: 'Qwen Image 2.1' })); select.value = state.engine;
+        const select = el('select', { 'aria-label': 'Engine', onchange: e => { state.engine = e.target.value; this.saveSoon(); this.rebuild(space); } },
+            ...Object.entries(engines).map(([value, text]) => el('option', { value, text }))); select.value = state.engine;
         host.append(field('Engine', select));
     }
-    essentials(host, cfg, space, editing = false) {
+    essentials(host, cfg, space) {
         const changed = () => this.presetChanged(space);
-        this.promptControls(host, cfg, changed, editing || cfg.engine === 'krea_edit', space);
-        host.append(el('div', { class: 'amm-size-controls' })); this.resolutionControls(host, cfg, space, editing);
+        this.promptControls(host, cfg, changed, space);
+        host.append(el('div', { class: 'amm-size-controls' })); this.resolutionControls(host, cfg, space);
         this.samplingControls(host, cfg, cfg.engine, changed, space); this.modelControls(host, cfg, cfg.engine, changed, false, space);
     }
     runBar(host, cfg, space, label, operation = space) {
         host.append(el('div', { class: 'amm-run-bar' }, seed('Seed', cfg, () => this.presetChanged(space), 'Random seed for each generation'),
             button(label, () => this.action(() => this.run(operation)), { class: 'amm-primary', 'data-run': operation }), el('small', { class: 'amm-run-hint' })));
     }
-    promptControls(host, cfg, changed, editing = false, space) {
+    promptControls(host, cfg, changed, space) {
         const sections = cfg.prompt_sections ||= {};
         const preview = el('textarea', { class: 'amm-prompt-preview', readOnly: true, 'aria-label': 'Combined prompt' });
         let previewTimer;
@@ -469,14 +389,13 @@ export class Studio {
         const enhanceField = (input, key, label) => space ? el('div', { class: 'amm-prompt-field' }, input,
             iconButton(`Enhance ${label}`, 'sparkles', () => this.action(() => this.run('enhance', space, null, key)),
                 { 'data-run': 'enhance', title: 'Enhance this field with the global text generator' })) : input;
-        const task = combo('TASK', ['TEXT_TO_IMAGE', 'IMAGE_TO_IMAGE', 'IMAGE_EDIT', 'REFINE', 'REDESIGN'], sections.task, value => { sections.task = value; update(); });
+        const task = combo('TASK', ['TEXT_TO_IMAGE', 'IMAGE_TO_IMAGE'], sections.task, value => { sections.task = value; update(); });
         task.querySelector('input').placeholder = 'TEXT_TO_IMAGE';
         task.querySelector('input').addEventListener('input', e => { sections.task = e.target.value; update(); });
         group.append(task);
-        const inputs = {}, inherited = this.projectStyle(cfg.engine);
+        const inputs = {}, inherited = this.projectStyle();
         let showStyle = () => {};
-        const pickers = ['anima', 'anima_edit'].includes(cfg.engine) ? ['animadex', 'stylebook'] : styleSource(cfg.engine) ? ['stylebook'] : [];
-        if (pickers.length) group.append(el('div', { class: 'amm-row' }, ...pickers.map(source => iconButton(source === 'animadex' ? 'Browse Animadex styles and characters' : 'Browse Stylebook styles', 'image',
+        group.append(el('div', { class: 'amm-row' }, ...['animadex', 'stylebook'].map(source => iconButton(source === 'animadex' ? 'Browse Animadex styles and characters' : 'Browse Stylebook styles', 'image',
             () => openStylePicker(this, source, (key, update) => {
                 if (key === 'style' && inherited && !cfg.style_override) { cfg.style_override = true; showStyle(); }
                 const input = inputs[key]; input.value = update(input.value);
@@ -499,7 +418,7 @@ export class Studio {
             group.append(el('details', { class: 'amm-prompt-section' }, el('summary', {}, el('span', { text: tag }), status),
                 useProject ? toggle('Use project style', useProject, 'Turn off to write a style for this operation only.') : null, enhanceField(input, key, tag)));
         }
-        const free = el('textarea', { class: 'amm-prompt', value: cfg.prompt || '', placeholder: editing ? 'Additional instructions or a complete editing prompt…' : 'Additional text or any prompt outside this format…', oninput: e => { cfg.prompt = e.target.value; update(); } });
+        const free = el('textarea', { class: 'amm-prompt', value: cfg.prompt || '', placeholder: 'Additional text or any prompt outside this format…', oninput: e => { cfg.prompt = e.target.value; update(); } });
         group.querySelector('summary').append(iconButton('Clear prompt', 'clear', e => {
             e.preventDefault(); e.stopPropagation();
             for (const key of Object.keys(sections)) delete sections[key];
@@ -539,32 +458,22 @@ export class Studio {
         return !!this.defs.TextGenerate && !!this.defs.SaveText && options(this.defs, 'CLIPLoader', 'clip_name').includes(config.encoder)
             && options(this.defs, 'CLIPLoader', 'type').includes(config.encoder_type);
     }
-    resolutionControls(host, cfg, space, editing = false) {
+    resolutionControls(host, cfg, space) {
         const box = host.querySelector('.amm-size-controls');
-        const latent = cfg.engine === 'krea_edit' && cfg.references.includes(cfg.latent_reference) ? cfg.latent_reference : null;
-        const id = editing ? this.state(space).source : ['moss', 'anima'].includes(cfg.engine) ? null : latent || cfg.references[0];
+        const id = cfg.engine === 'anima_ref' ? cfg.references[0] : null;
         const source = this.project.assets.find(a => a.id === id);
         const inherited = !!source && cfg.size_mode !== 'manual';
         const changed = () => this.presetChanged(space);
         const mode = segmented('Output size', [['original', 'Inherit from original', null, !source], ['manual', 'Manual · AR and MP']], inherited ? 'original' : 'manual',
-            value => { cfg.size_mode = value; changed(); this.resolutionControls(host, cfg, space, editing); });
+            value => { cfg.size_mode = value; changed(); this.resolutionControls(host, cfg, space); });
         box.replaceChildren(mode, sizeControls(inherited ? source : cfg, size => { Object.assign(cfg, size, { size_mode: 'manual' }); changed(); }, inherited),
-            el('small', { text: inherited ? `Inherited from ${source.name}${editing ? '.' : latent ? ', the initial latent reference.' : ', the first reference.'}` : source && (cfg.engine === 'qwen' || editing || latent) ? 'The image is resized to the selected AR and MP with a centered crop; the original file is preserved.' : 'Select the aspect ratio and resolution in megapixels.' }));
+            el('small', { text: inherited ? `Inherited from ${source.name}, the first reference.` : 'Select the aspect ratio and resolution in megapixels.' }));
     }
     references(host, space, cfg, slot = host) {
-        if (['moss', 'anima'].includes(cfg.engine)) { slot.append(el('small', { text: 'Text-to-image workflow. Reuse a saved reference prompt from its image menu to guide generation.' })); return; }
+        if (cfg.engine === 'anima') { slot.append(el('small', { text: 'Text-to-image workflow. Reuse a saved reference prompt from its image menu to guide generation.' })); return; }
         const box = el('details', { open: true }, el('summary', { text: 'Connected visual references' }));
         const list = el('div', { class: 'amm-reference-strip' });
-        const latent = cfg.engine === 'krea_edit' ? el('select', { 'aria-label': 'Initial latent image', onchange: e => {
-            cfg.latent_reference = e.target.value; this.presetChanged(space); refresh();
-        } }) : null;
         const refresh = () => {
-            if (latent) {
-                if (cfg.latent_reference && !cfg.references.includes(cfg.latent_reference)) { cfg.latent_reference = ''; this.saveSoon(); }
-                latent.replaceChildren(el('option', { value: '', text: 'None · empty latent' }), ...cfg.references.map((id, i) => el('option', { value: id, text: `${i + 1}. ${this.project.assets.find(a => a.id === id)?.name || 'Missing'}` })));
-                latent.value = cfg.latent_reference || '';
-                host.querySelector('.amm-edit-denoise').hidden = !cfg.latent_reference;
-            }
             this.resolutionControls(host, cfg, space);
             list.replaceChildren(...cfg.references.map((id, i) => {
                 const a = this.project.assets.find(a => a.id === id);
@@ -584,17 +493,16 @@ export class Studio {
                 return card;
             }));
         }; refresh(); this.referenceRefresh.set(space, refresh);
-        box.append(list, latent ? field('Initial latent image', latent, 'Select one connected image to enable Denoise in Sampling.') : '', iconButton('Choose references', 'link', () => {
+        box.append(list, iconButton('Choose references', 'link', () => {
             const items = this.project.assets.filter(a => !a.deleted && !a.missing);
             const picker = el('div', { class: 'amm-asset-picker' });
-            const update = () => { for (const b of picker.children) b.disabled = cfg.engine !== 'qwen' && cfg.references.length >= 4 && !cfg.references.includes(b.dataset.assetId); };
+            const update = () => { for (const b of picker.children) b.disabled = cfg.references.length >= 4 && !cfg.references.includes(b.dataset.assetId); };
             picker.append(...items.map(a => this.assetPickerItem(a, () => {
-                if (!cfg.references.includes(a.id) && (cfg.engine === 'qwen' || cfg.references.length < 4)) { cfg.references.push(a.id); this.presetChanged(space); }
+                if (!cfg.references.includes(a.id) && cfg.references.length < 4) { cfg.references.push(a.id); this.presetChanged(space); }
                 refresh(); update(); this.jobs();
             }))); update(); this.modal('Connect references', picker);
         }, {}, true));
-        box.append(el('small', { text: cfg.engine === 'qwen' ? 'Qwen: images are connected to the vision encoder and VAE. Inherit the size of the first reference or set AR and MP manually.'
-            : cfg.engine === 'anima_edit' ? 'Anima Ref: connect one to four references; they are placed side by side as one reference. Character and style come from them, so describe only the scene, pose and framing in the prompt.' : 'Krea2 Edit: connect one to four references in order. For scene/subject edits, place the scene first and the subject last. Use compatible editing models and LoRAs.' }));
+        box.append(el('small', { text: 'Anima Ref: connect one to four references; they are placed side by side as one reference. Character and style come from them, so describe only the scene, pose and framing in the prompt.' }));
         slot.append(box);
     }
     assetPickerItem(a, action) { const b = button('', action, { 'data-asset-id': a.id }); b.append(el('img', { src: assetUrl(this.project.id, a.id, true), alt: a.name, loading: 'lazy' }), el('span', { text: `${a.name} · ${a.kind}` })); return b; }
@@ -615,61 +523,8 @@ export class Studio {
         this.presets(controls, space, cfg, space === 'references' ? referencePresets : {});
         const slot = el('div'); controls.append(slot);
         this.essentials(controls, cfg, space); this.references(controls, space, cfg, slot);
-        this.runBar(controls, cfg, space, cfg.engine === 'krea_edit' ? space === 'references' ? 'Edit reference' : 'Edit panel' : space === 'references' ? 'Generate reference' : 'Generate panel');
+        this.runBar(controls, cfg, space, space === 'references' ? 'Generate reference' : 'Generate panel');
         const gallery = el('section', { class: 'amm-gallery-area' }); view.append(controls, gallery); this.gallery(gallery, space === 'references' ? 'references' : 'panels', space); this.controlLayout(view, controls, space);
-    }
-    sourcePicker(host, space, kind, onchange) {
-        const label = kind === 'pages' ? 'Original page' : kind === 'panels' ? 'Original panel' : 'Original image';
-        const state = this.state(space); const select = el('select', { 'aria-label': label, onchange: e => { state.source = e.target.value; state.result = ''; this.saveSoon(); onchange(); } }, el('option', { value: '', text: 'Select original…' }),
-            ...this.project.assets.filter(a => (!kind || a.kind === kind) && !a.deleted).map(a => el('option', { value: a.id, text: `${kind ? '' : `${a.kind === 'pages' ? 'Pages' : spaces[a.kind]} · `}${a.name} · v${a.version}${a.missing ? ' · Missing' : ''}` })));
-        select.value = state.source; host.append(field(label, select));
-    }
-    refine(view) {
-        const space = 'refine', controls = el('aside', { class: 'amm-controls' }), preview = el('section', { class: 'amm-preview-area' });
-        const cfg = this.config(space); cfg.engine = this.state(space).engine;
-        controls.append(el('h2', { text: cfg.engine === 'krea' ? 'Krea2 · img2img' : 'Qwen · instruction editing' }), el('small', { text: 'Refine references, panels, or pages. Results are saved as new versions in the original category.' }));
-        this.engineSelect(controls, space); this.sourcePicker(controls, space, null, () => this.rebuild(space)); this.presets(controls, space, cfg, refinementPresets); this.essentials(controls, cfg, space, true);
-        this.runBar(controls, cfg, space, 'Refine image');
-        view.append(controls, preview); this.controlLayout(view, controls, space); this.comparison(preview, space);
-        const gallery = el('div', { class: 'amm-result-gallery' }); preview.append(gallery);
-        const source = this.project.assets.find(a => a.id === this.state(space).source);
-        this.gallery(gallery, source?.kind || 'panels', space, true);
-    }
-    comparison(host, space) {
-        host.querySelector('.amm-comparison')?.remove();
-        const state = this.state(space), source = this.project.assets.find(a => a.id === state.source), result = this.project.assets.find(a => a.id === state.result);
-        const shell = el('div', { class: 'amm-comparison' });
-        if (!source) shell.append(el('div', { class: 'amm-empty', text: 'Select an original image from your project.' }));
-        else {
-            const images = el('div', { class: 'amm-compare-images' }, el('figure', {}, el('figcaption', { text: 'Original' }), el('img', { src: assetUrl(this.project.id, source.id), alt: source.name })));
-            if (result) images.append(el('figure', {}, el('figcaption', { text: 'Result' }), el('img', { src: assetUrl(this.project.id, result.id), alt: result.name })));
-            shell.append(images);
-            if (result) {
-                const range = el('input', { type: 'range', min: 0, max: 100, value: 50, 'aria-label': 'Before and after comparison', oninput: e => sliding.style.setProperty('--amm-split', `${e.target.value}%`) });
-                const sliding = el('div', { class: 'amm-sliding', hidden: true }, el('img', { src: assetUrl(this.project.id, source.id), alt: 'Before' }),
-                    el('img', { src: assetUrl(this.project.id, result.id), alt: 'After', class: 'amm-compare-overlay' }), range);
-                shell.prepend(segmented('Comparison view', [['split', 'Side by side'], ['slider', 'Before / after slider']], 'split', value => { sliding.hidden = value !== 'slider'; images.hidden = !sliding.hidden; }), sliding);
-            }
-        }
-        host.prepend(shell);
-    }
-    finish(view) {
-        const space = 'finish', cfg = this.config(space, 'qwen'); cfg.engine = 'qwen'; this.state(space).engine = 'qwen';
-        const controls = el('aside', { class: 'amm-controls' }), preview = el('section', { class: 'amm-preview-area' }); controls.append(el('h2', { text: 'Finishing · Qwen' }));
-        this.sourcePicker(controls, space, 'pages', () => { this.resolutionControls(controls, cfg, space, true); this.comparison(preview, space); });
-        controls.append(segmented('Operation', [['refine', 'Refine · keep composition'], ['redesign', 'Redesign composition']], cfg.finish_mode || 'refine',
-            value => { cfg.finish_mode = value; analysisInput.value = analysisInstruction(cfg); this.saveSoon(); }));
-        const analysisInput = el('textarea', { value: analysisInstruction(cfg), oninput: e => { (cfg.analysis_prompts ||= {})[cfg.finish_mode || 'refine'] = e.target.value; this.saveSoon(); } });
-        const analyze = el('details', {}, el('summary', { text: 'Visual analysis · Generate Text' }));
-        analyze.append(combo('Vision analysis encoder', options(this.defs, 'CLIPLoader', 'clip_name'), cfg.analysis_encoder, v => { cfg.analysis_encoder = v; cfg.model_overrides.analysis_encoder = v; this.saveSoon(); }),
-            combo('Analysis encoder type', options(this.defs, 'CLIPLoader', 'type'), cfg.analysis_encoder_type, v => { cfg.analysis_encoder_type = v; cfg.model_overrides.analysis_encoder_type = v; this.saveSoon(); }),
-            field('Analysis instruction', analysisInput),
-            button('Restore default instruction', () => { delete cfg.analysis_prompts?.[cfg.finish_mode || 'refine']; analysisInput.value = analysisInstruction(cfg); this.saveSoon(); }),
-            slider('Maximum length · tokens', el('input', { type: 'number', value: cfg.max_length, min: 1, max: 32768, onchange: e => { cfg.max_length = Number(e.target.value); this.saveSoon(); } }), [64, 4096]),
-            button('Analyze and propose instruction', () => this.action(() => this.run('analysis')), { 'data-run': 'analysis' }), el('small', { text: 'The proposal appears below for review. Analysis does not start finishing.' }));
-        controls.append(analyze); this.presets(controls, space, cfg); this.essentials(controls, cfg, space, true);
-        this.runBar(controls, cfg, space, 'Run finishing');
-        view.append(controls, preview); this.controlLayout(view, controls, space); this.comparison(preview, space); const gallery = el('div', { class: 'amm-result-gallery' }); preview.append(gallery); this.gallery(gallery, 'pages', space, true);
     }
     assetContextMenu(card, actions) {
         actions.tabIndex = -1;
@@ -728,26 +583,19 @@ export class Studio {
                 if (a.kind === 'references') actions.append(this.describeReferenceAction(a, space));
                 if (!a.deleted) {
                     if (['references', 'panels'].includes(a.kind)) addAction('Draw with Klecks', 'pencil', () => openDrawing(this, a.kind, a));
-                    if (['references', 'panels'].includes(a.kind)) addAction('Edit with Krea2', 'pencil', () => {
-                        this.state(a.kind).engine = 'krea_edit'; this.config(a.kind, 'krea_edit').references = [a.id];
-                        this.rebuild(a.kind); this.switch(a.kind); this.saveSoon();
-                    });
                     if (['references', 'panels'].includes(a.kind)) addAction('Use with Anima Ref', 'link', () => {
-                        this.state(a.kind).engine = 'anima_edit'; this.config(a.kind, 'anima_edit').references = [a.id];
+                        this.state(a.kind).engine = 'anima_ref'; this.config(a.kind, 'anima_ref').references = [a.id];
                         this.rebuild(a.kind); this.switch(a.kind); this.saveSoon();
                     });
                     if (space === 'design') addAction('Place', 'place', () => { if (!this.editor?.panel) this.editor.addPanel(); this.editor.change(() => this.editor.panel.asset = a.id); this.editor.loadImages(); });
-                    else if (space === 'refine' || space === 'finish') { addAction('Original', 'image', () => { state.source = a.id; state.result = ''; this.saveSoon(); this.rebuild(space); }); addAction('Result', 'check', () => { state.result = a.id; this.saveSoon(); this.comparison(host.parentElement, space); }); }
                     else addAction('Use as reference', 'link', () => {
                         const cfg = this.config(space);
                         if (!cfg.references.includes(a.id)) {
-                            if (cfg.engine !== 'qwen' && cfg.references.length >= 4) { this.fail(new Error('Krea2 supports up to four references. Remove one before adding another.')); return; }
+                            if (cfg.references.length >= 4) { this.fail(new Error('Anima Ref supports up to four references. Remove one before adding another.')); return; }
                             cfg.references.push(a.id); this.presetChanged(space);
                         }
                         this.saveSoon(); this.rebuild(space);
                     });
-                    if (space !== 'refine') addAction('Refine', 'wand', () => { const refine = this.state('refine'); refine.source = a.id; refine.result = ''; this.rebuild('refine'); this.switch('refine'); this.saveSoon(); });
-                    if (a.kind === 'pages' && space !== 'finish') addAction('Finishing', 'sparkles', () => { this.state('finish').source = a.id; this.rebuild('finish'); this.switch('finish'); this.saveSoon(); });
                 }
                 addAction(a.deleted ? 'Restore' : 'Delete', a.deleted ? 'restore' : 'trash', () => {
                     const update = async () => {
@@ -796,7 +644,7 @@ export class Studio {
         chooseFile('image/*', files => this.action(async () => {
             const project = this.project.id;
             for (const file of files) { const form = new FormData(); form.append('image', file); form.append('kind', kind); await request(`/projects/${project}/import`, form, 'POST'); }
-            if (this.project?.id === project) { const data = await request(`/projects/${project}`); this.project.assets = data.assets; this.galleryRefresh.get(this.active)?.(); if (['refine', 'finish'].includes(this.active)) this.rebuild(this.active); }
+            if (this.project?.id === project) { const data = await request(`/projects/${project}`); this.project.assets = data.assets; this.galleryRefresh.get(this.active)?.(); }
         }), true);
     }
     preview(asset, assets = [asset]) {
@@ -819,8 +667,8 @@ export class Studio {
     assetSettings(asset) {
         const info = asset.metadata?.settings;
         const content = el('div', {}, el('pre', { text: JSON.stringify(asset.metadata, null, 2) }));
-        if (info && asset.metadata.operation !== 'analysis') content.append(button('Restore settings for this operation', () => {
-            const operation = ['references', 'panels', 'refine', 'finish'].includes(asset.metadata.operation) ? asset.metadata.operation : this.active;
+        if (info) content.append(button('Restore settings for this operation', () => {
+            const operation = ['references', 'panels'].includes(asset.metadata.operation) ? asset.metadata.operation : this.active;
             const engine = asset.metadata.engine || info.engine; this.project.config[`${operation}:${engine}`] = { ...clone(info), random_seed: false }; this.state(operation).engine = engine;
             this.rebuild(operation); this.switch(operation); this.saveSoon();
         }));
@@ -854,7 +702,7 @@ export class Studio {
                 form.append('sources', JSON.stringify(page.panels.map(p => p.asset).filter(Boolean))); form.append('metadata', JSON.stringify({ operation: 'composition', layout: page }));
                 const prior = this.project.assets.filter(a => a.metadata?.layout?.id === page.id && !a.deleted).sort((a, b) => b.created - a.created)[0]; if (prior) form.append('parent', prior.id);
                 const asset = await request(`/projects/${project}/import`, form, 'POST');
-                if (this.project.id === project) { this.project.assets.push(asset); this.state('finish').source = asset.id; this.rebuild('finish'); }
+                if (this.project.id === project) this.project.assets.push(asset);
                 this.notify(`Composition saved: ${page.name}`);
             }), { class: 'amm-primary amm-design-export' }));
         const presets = el('select', { 'aria-label': 'Layout presets', onchange: e => {
@@ -877,9 +725,9 @@ export class Studio {
     validateLayout(layout) {
         if (!Array.isArray(layout.panels) || layout.panels.some(p => !Array.isArray(p.polygon) || p.polygon.length < 3 || p.polygon.some(pt => !Array.isArray(pt) || pt.length !== 2 || !pt.every(Number.isFinite)))) throw new Error('Invalid layout: polygons must have finite coordinates.');
     }
-    async run(operation, space = operation === 'analysis' ? 'finish' : operation, assetId = null, section = null, dialogue = null) {
+    async run(operation, space = operation, assetId = null, section = null, dialogue = null) {
         const textTask = operation in textTasks;
-        const project = this.project, state = this.state(space), engine = textTask ? 'text' : operation === 'analysis' ? 'qwen' : state.engine;
+        const project = this.project, state = this.state(space), engine = textTask ? 'text' : operation === 'style' ? 'anima' : state.engine;
         const key = `${project.id}:${operation}`; if (this.busy.has(key)) return;
         this.busy.add(key); this.jobs(); this.error.hidden = true;
         let jobId;
@@ -891,27 +739,18 @@ export class Studio {
             } else if (textTask) cfg.instruction = textInstruction(operation, this.styled(this.config(space)), section);
             if (!textTask) cfg.prompt_sections = this.styled(cfg).prompt_sections;
             if (cfg.random_seed) cfg.seed = Math.floor(Math.random() * 2 ** 48);
-            let ids = textTask ? operation === 'describe' ? [assetId] : [] : ['refine', 'finish', 'analysis'].includes(operation) ? [state.source].filter(Boolean) : ['moss', 'anima'].includes(engine) || operation === 'style' ? [] : cfg.references;
-            if (['refine', 'finish', 'analysis'].includes(operation) && !ids.length) throw new Error('Select the original.');
+            const ids = textTask ? operation === 'describe' ? [assetId] : [] : engine === 'anima_ref' ? cfg.references : [];
             const unavailable = ids.find(id => !project.assets.some(a => a.id === id && !a.missing && !a.deleted));
             if (unavailable) {
                 const asset = project.assets.find(a => a.id === unavailable);
                 throw new Error(asset?.deleted ? `Selected image "${asset.name}" is in Trash. Restore it or remove it from the connected references.`
                     : `Selected image "${asset?.name || unavailable}" is missing. Reimport it and select it again, or remove it from the connected references.`);
             }
-            delete cfg.latent_reference_index;
-            if (engine === 'krea_edit' && cfg.latent_reference) {
-                cfg.latent_reference_index = ids.indexOf(cfg.latent_reference);
-                if (cfg.latent_reference_index < 0) throw new Error('Choose a connected reference as the initial latent image.');
-            }
-            if (!textTask && ids.length && cfg.size_mode !== 'manual') {
-                Object.assign(cfg, sizeSettings(project.assets.find(a => a.id === (cfg.latent_reference_index != null ? ids[cfg.latent_reference_index] : ids[0]))), { size_mode: 'original' });
-            }
+            if (!textTask && ids.length && cfg.size_mode !== 'manual') Object.assign(cfg, sizeSettings(project.assets.find(a => a.id === ids[0])), { size_mode: 'original' });
             const paths = await request(`/projects/${project.id}/stage`, { assets: ids }, 'POST');
             jobId = uuid(); const built = buildPrompt(this.defs, operation, engine, cfg, paths, jobId);
-            const kind = textTask ? 'references' : operation === 'refine' ? project.assets.find(a => a.id === ids[0]).kind : operation === 'references' ? 'references' : ['finish', 'analysis'].includes(operation) ? 'pages' : 'panels';
-            const job = { id: jobId, operation, engine, kind, settings: cfg, prompt: built.graph, output_node: built.outputNode,
-                parent: ['refine', 'finish'].includes(operation) || (engine === 'krea_edit' && project.assets.find(a => a.id === ids[0]).kind === kind) ? ids[0] : null, sources: ids,
+            const kind = textTask || operation === 'references' ? 'references' : 'panels';
+            const job = { id: jobId, operation, engine, kind, settings: cfg, prompt: built.graph, output_node: built.outputNode, parent: null, sources: ids,
                 ...(textTask ? { space, target_engine: state.engine, section } : {}),
                 ...(dialogue ? { dialogue_target: { page: dialogue.page, bubble: dialogue.bubble } } : {}),
                 name: `${spaces[space]} · ${new Date().toLocaleString('en-US')}` };
@@ -964,7 +803,6 @@ export class Studio {
         this.jobs();
     }
     async poll() {
-        await this.pollDownloads();
         if (!this.project || this.polling || this.abort.signal.aborted) return;
         const project = this.project; this.polling = true;
         try {
@@ -978,13 +816,10 @@ export class Studio {
             const added = JSON.stringify(data.assets.map(a => [a.id,a.missing,a.deleted,a.name,a.metadata?.description_prompt])) !== JSON.stringify(project.assets.map(a => [a.id,a.missing,a.deleted,a.name,a.metadata?.description_prompt]));
             for (const job of data.jobs) {
                 const prior = project.jobs.find(j => j.id === job.id);
-                if (job.state === 'error' && prior?.state !== 'error') this.fail(new Error(`${textTasks[job.operation] || (job.operation === 'sketch' ? 'Sketch to Art' : job.operation === 'manga' ? 'Art to Manga Panel' : spaces[job.operation === 'analysis' ? 'finish' : job.operation])} · ${job.engine}: ${typeof job.error === 'string' ? job.error : JSON.stringify(job.error)}`));
+                if (job.state === 'error' && prior?.state !== 'error') this.fail(new Error(`${textTasks[job.operation] || (job.operation === 'sketch' ? 'Sketch to Art' : job.operation === 'manga' ? 'Art to Manga Panel' : spaces[job.operation])} · ${job.engine}: ${typeof job.error === 'string' ? job.error : JSON.stringify(job.error)}`));
                 if (job.state === 'complete' && prior?.state !== 'complete') {
-                    const space = job.operation === 'analysis' ? 'finish' : job.operation;
                     if (job.operation in textTasks) this.textResult(job);
-                    else if (job.operation === 'analysis') { this.config('finish', 'qwen').prompt = job.text || ''; this.rebuild('finish'); }
                     else if (job.operation === 'style' && job.drawing_output) { this.stylePreviews.unshift({ project: project.id, engine: job.engine, url: api.apiURL('/view?' + new URLSearchParams(job.drawing_output)) }); this.renderStylePreviews?.(); }
-                    else if (['refine', 'finish'].includes(space) && job.results?.length) this.state(space).result = job.results[0];
                     this.saveSoon();
                 }
             }
@@ -992,7 +827,6 @@ export class Studio {
             if (added) {
                 this.referenceRefresh.forEach(refresh => refresh());
                 this.galleryRefresh.forEach(refresh => refresh());
-                for (const space of ['refine', 'finish']) { const view = this.views.get(space); if (view) this.comparison(view.querySelector('.amm-preview-area'), space); }
             }
             this.jobs();
         } catch (e) { this.fail(e); } finally { this.polling = false; }
@@ -1013,7 +847,7 @@ export class Studio {
     }
     jobs() {
         if (!this.project) return;
-        const relevant = this.project.jobs.filter(j => (j.space || (j.operation === 'analysis' ? 'finish' : j.operation)) === this.active);
+        const relevant = this.project.jobs.filter(j => (j.space || j.operation) === this.active);
         const active = relevant.filter(j => ['registered', 'queued', 'running'].includes(j.state));
         const labels = { registered: 'Preparing', queued: 'Queued', running: 'Running', complete: 'Completed', error: 'Error', cancelled: 'Cancelled' };
         this.status.replaceChildren(el('span', { text: `${this.project.name} · ${spaces[this.active]} · ${active.length} active jobs` }),
@@ -1026,9 +860,9 @@ export class Studio {
                 { 'data-cancel-job': j.id, title: j.state === 'running' ? 'Cancel running generation' : 'Cancel queued generation', disabled: !!j.cancel_requested || this.busy.has(`cancel:${this.project.id}:${j.id}`) }) : null,
                 j.state === 'running' ? el('progress', { max: this.progress.get(j.id)?.max || 1, ...(this.progress.has(j.id) ? { value: this.progress.get(j.id).value } : {}) }) : null)));
         for (const b of this.dialog.querySelectorAll('[data-run]')) {
-            const run = b.dataset.run, references = ['references', 'panels'].includes(run) && ['krea_edit', 'anima_edit'].includes(this.state(run).engine) ? this.config(run).references.length : null;
+            const run = b.dataset.run, references = ['references', 'panels'].includes(run) && this.state(run).engine === 'anima_ref' ? this.config(run).references.length : null;
             const reason = this.busy.has(`${this.project.id}:${run}`) ? 'Submitting…'
-                : references !== null && (references < 1 || references > 4) ? 'Connect one to four references to edit.'
+                : references !== null && (references < 1 || references > 4) ? 'Connect one to four references.'
                 : run in textTasks && !this.textGeneratorAvailable() ? 'Configure the global text generator in Settings.'
                 : run in textTasks && this.project.jobs.some(j => j.operation === run && ['registered', 'queued', 'running'].includes(j.state)) ? 'A text generation is already running.'
                 : run === 'describe' && !this.project.assets.some(a => a.id === b.dataset.textSource && !a.deleted && !a.missing) ? 'The source image is unavailable.' : '';

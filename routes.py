@@ -15,7 +15,6 @@ import folder_paths
 from server import PromptServer
 
 from .storage import ProjectStore, RevisionConflict, contained
-from .models import ModelDownloads
 from . import style_library
 
 store = ProjectStore(Path(folder_paths.get_user_directory()) / 'anima-manga-maker-settings.json',
@@ -23,7 +22,6 @@ store = ProjectStore(Path(folder_paths.get_user_directory()) / 'anima-manga-make
 routes = PromptServer.instance.routes
 # Operations whose result is shown once from ComfyUI's temp folder and never imported into the project.
 preview_operations = ('sketch', 'manga', 'bbox', 'style')
-model_downloads = ModelDownloads()
 
 
 def endpoint(fn):
@@ -73,41 +71,6 @@ async def drawing_document(request):
 @endpoint
 async def settings(request):
     return web.json_response(store.settings())
-
-
-@routes.get('/anima-manga-maker/models')
-@endpoint
-async def models(request):
-    return web.json_response(await asyncio.to_thread(model_downloads.catalog))
-
-
-@routes.post('/anima-manga-maker/models/download')
-@endpoint
-async def download_models(request):
-    body = await request.json()
-    engine = body['engine']; previous = model_downloads.tasks.get(engine)
-    state = model_downloads.start(engine)
-    task = model_downloads.tasks[engine]
-    if task is not previous:
-        task.add_done_callback(lambda completed: configure_downloaded_models(engine, completed))
-    return web.json_response(state)
-
-
-def configure_downloaded_models(engine, task):
-    if task.cancelled() or model_downloads.states[engine]['state'] != 'complete':
-        return
-    try:
-        catalog = model_downloads.catalog(); values = dict(catalog['profiles'][engine]['settings'])
-        for artifact in catalog['artifacts']:
-            for key in ('model', 'encoder', 'vae', 'identity_lora'):
-                if values.get(key) == artifact['filename'] and artifact['installed']:
-                    values[key] = artifact['installed']
-        with store.lock:
-            settings = store.settings()
-            settings.setdefault('models', {}).setdefault(engine, {}).update(values)
-            store.configure(settings)
-    except (OSError, ValueError) as error:
-        model_downloads.states[engine].update(state='error', error=f'Weights installed, but settings could not be saved: {error}')
 
 
 @routes.post('/anima-manga-maker/settings')
@@ -291,7 +254,7 @@ def synchronize(project_id):
                 elif status.get('completed'):
                     outputs = history.get('outputs', {})
                     output = outputs.get(job['output_node'], {})
-                    if job['operation'] in ('analysis', 'enhance', 'describe'):
+                    if job['operation'] in ('enhance', 'describe'):
                         job['text'] = '\n'.join(output.get('text', []))
                         if job['operation'] == 'describe':
                             asset = next(a for a in data['assets'] if a['id'] == job['sources'][0])
