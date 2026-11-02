@@ -138,7 +138,7 @@ class ProjectStore:
             for kind in KINDS:
                 contained(directory, kind).mkdir()
             data = {'id': project_id, 'name': str(name).strip() or 'New manga', 'updated': time.time(),
-                    'assets': [], 'config': {}, 'presets': {}, 'layouts': {}, 'workspace': {}, 'story': {}, 'jobs': [], 'revision': 0}
+                    'assets': [], 'config': {}, 'presets': {}, 'layouts': {}, 'workspace': {}, 'story': {}, 'style': {}, 'jobs': [], 'revision': 0}
             return self.write(data)
 
     def update(self, project_id, patch):
@@ -147,14 +147,14 @@ class ProjectStore:
             # Clients send the revision they edited; a stale one would overwrite another client's changes.
             if 'revision' in patch and patch['revision'] != data['revision']:
                 raise RevisionConflict('The project was changed by another client. Reload it and try again.')
-            for key in ('name', 'config', 'presets', 'layouts', 'workspace', 'story'):
+            for key in ('name', 'config', 'presets', 'layouts', 'workspace', 'story', 'style'):
                 if key in patch:
                     if key != 'name' and not isinstance(patch[key], dict):
                         raise ValueError(f'{key} must be a JSON object')
                     if key == 'name' and not isinstance(patch[key], str):
                         raise ValueError('Name must be text')
                     data[key] = patch[key]
-            if patch.keys() & {'config', 'presets', 'layouts', 'workspace', 'story'}:
+            if patch.keys() & {'config', 'presets', 'layouts', 'workspace', 'story', 'style'}:
                 data['revision'] += 1
             return self.write(data)
 

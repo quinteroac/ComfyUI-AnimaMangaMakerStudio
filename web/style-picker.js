@@ -2,7 +2,7 @@ import { api } from '../../scripts/api.js';
 import { el, button, field, request } from './client.js';
 import { segmented, toggle } from './controls.js';
 
-// Anima reads Danbooru tags, so it gets the Anima Style Explorer's Animadex lists; the natural-language engines get Stylebook prose.
+// Animadex tags are for Anima; Stylebook prose works with every engine, Anima included.
 export const styleSource = engine => ['anima', 'anima_edit'].includes(engine) ? 'animadex' : ['krea', 'krea_edit', 'qwen', 'moss'].includes(engine) ? 'stylebook' : null;
 
 const animadexTabs = [['artist', 'Animadex styles'], ['character', 'Characters']];
@@ -19,7 +19,7 @@ const merge = (current, text, separator) => !current.trim() || state.replace ? t
 
 function animadexCard(item, tab, pick) {
     const src = item.local ? previewUrl('animadex', item.local) : onlinePreviews() ? item.thumb : '';
-    return button('', () => pick(item), { class: 'amm-style-card', title: tab === 'artist' ? `@${item.tag}` : [item.tag, ...item.tags].join(', ') },
+    return el('button', { type: 'button', onclick: () => pick(item), class: 'amm-style-card', title: tab === 'artist' ? `@${item.tag}` : [item.tag, ...item.tags].join(', ') },
         src ? el('img', { src, alt: '', loading: 'lazy' }) : el('span', { class: 'amm-style-empty', text: tab === 'artist' ? '@' : item.name.slice(0, 1) }),
         el('strong', { text: item.name }), el('small', { text: [item.copyright, `${Number(item.works).toLocaleString()} works`].filter(Boolean).join(' · ') }));
 }
@@ -28,12 +28,12 @@ function stylebookCard(style, pick) {
     const { preview } = style, scale = tile / (preview?.w || 256);
     const image = preview ? el('span', { class: 'amm-style-tile', style: `background-image:url("${previewUrl('stylebook', preview.atlas)}");background-size:${preview.size[0] * scale}px ${preview.size[1] * scale}px;background-position:${-preview.x * scale}px ${-preview.y * scale}px` })
         : el('span', { class: 'amm-style-empty', text: style.label.slice(0, 1) });
-    return button('', () => pick(style), { class: 'amm-style-card', title: style.prose || style.tags }, image, el('strong', { text: style.label }), el('small', { text: style.aliases.slice(0, 3).join(' · ') }));
+    return el('button', { type: 'button', onclick: () => pick(style), class: 'amm-style-card', title: style.prose || style.tags }, image, el('strong', { text: style.label }), el('small', { text: style.aliases.slice(0, 3).join(' · ') }));
 }
 
 // `apply(section, update)` receives the prompt section to change and a function from its current text to the new text.
-export function openStylePicker(studio, engine, apply) {
-    const source = styleSource(engine), current = state[source];
+export function openStylePicker(studio, source, apply) {
+    const current = state[source];
     const grid = el('div', { class: 'amm-style-grid' }), count = el('small', { class: 'amm-style-count' });
     const more = button('Load more', () => studio.action(() => render(true)), { hidden: true });
     const search = el('input', { type: 'search', value: current.query, placeholder: source === 'animadex' ? 'Search artists, characters or series…' : 'Search styles…', 'aria-label': 'Search styles' });

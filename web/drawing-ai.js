@@ -208,7 +208,7 @@ export function sketchControls(studio, kind, project, send, busyChanged) {
         if (active) { pending = true; return; }
         stopping = false; pending = false; active = { token: uuid(), revision, mode, name: title(), operation: mode,
             engine: { sketch: cfg.engine, manga: manga.cfg.mode === 'qwen' ? 'qwen' : 'manga_lite', bbox: bbox.cfg.engine }[mode],
-            settings: structuredClone({ sketch: cfg, manga: { ...manga.cfg, feather: 0, blend_opacity: 100 }, bbox: { ...bbox.cfg, boxes: bbox.boxes, feather: 0, blend_opacity: 100 } }[mode]) };
+            settings: structuredClone({ sketch: studio.styled(cfg), manga: { ...manga.cfg, feather: 0, blend_opacity: 100 }, bbox: studio.styled({ ...bbox.cfg, boxes: bbox.boxes, feather: 0, blend_opacity: 100 }) }[mode]) };
         status.textContent = 'Capturing drawing…'; update(); send('manga-drawing-snapshot', { token: active.token });
     }
     function liveEnabled() { return live.checked && mode === 'manga' && manga.cfg.mode === 'lite' && ready && !disposed; }

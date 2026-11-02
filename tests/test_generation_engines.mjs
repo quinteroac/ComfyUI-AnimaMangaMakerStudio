@@ -83,6 +83,11 @@ assert.deepEqual(kreaLayout.compositional_deconstruction, { background: 'Neon ci
     { type: 'obj', bbox: [250, 400, 750, 1000], desc: 'A girl with fennec ears, positioned in the lower-center area, occupying a large area' },
     { type: 'text', bbox: [100, 50, 900, 150], text: 'MANGA', desc: 'Bold title, positioned in the upper-center area, occupying a small area' }] }, 'Boxes without a description are skipped');
 jobs.push({ engine: 'krea', op: 'bbox', count: 0, ...kreaBuilt });
+// Project style previews are shown from ComfyUI's temp folder and never saved as project assets.
+for (const graph of [buildPrompt(defs, 'style', 'krea', kreaCfg, [], 'style').graph, buildPrompt(defs, 'style', 'anima', inheritModels({ ...initialSettings('anima'), prompt: 'x' }, settings.models.anima, 'anima'), [], 'style').graph]) {
+    const types = Object.values(graph).map(n => n.class_type);
+    assert(types.includes('PreviewImage') && !types.includes('SaveImage'));
+}
 const mossCfg = inheritModels({ ...initialSettings('moss'), aspect_ratio: '1000:1500', megapixels: 1, boxes: layoutBoxes }, settings.models.moss, 'moss');
 const mossGraph = Object.values(buildPrompt(defs, 'bbox', 'moss', mossCfg, [], 'bbox').graph);
 const [sky, character, text] = mossGraph.find(n => n.class_type === 'CreateBoundingBoxes').inputs.editor_state.__value__;

@@ -46,7 +46,7 @@ try {
     const studio = page.locator('.amm-studio'); await studio.waitFor();
     for (const space of ['references', 'panels']) {
         await studio.getByRole('button', { name: space === 'references' ? 'References' : 'Panels', exact: true }).click();
-        const view = studio.locator(`.mm-${space}`);
+        const view = studio.locator(`.amm-${space}`);
         for (const engine of ['moss', 'anima']) {
             await view.getByLabel('Engine', { exact: true }).selectOption(engine);
             assert.equal(await view.getByText('Connected visual references', { exact: true }).count(), 0);

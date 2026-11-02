@@ -317,7 +317,7 @@ export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) 
         const samples = add('KSampler', { model, positive, negative, latent_image: latent, seed: Number(config.seed), steps: Number(config.steps),
             cfg: Number(config.cfg), sampler_name: config.sampler, scheduler: config.scheduler, denoise: 1 });
         const decoded = decode(samples, vae);
-        const output = operation === 'bbox' ? add('PreviewImage', { images: decoded }) : add('SaveImage', { images: decoded, filename_prefix: `anima-manga-maker/${jobId}/result` });
+        const output = ['bbox', 'style'].includes(operation) ? add('PreviewImage', { images: decoded }) : add('SaveImage', { images: decoded, filename_prefix: `anima-manga-maker/${jobId}/result` });
         return { graph, outputNode: output[0] };
     }
     let model = add('UNETLoader', { unet_name: check('UNETLoader', 'unet_name', config.model, 'Model'), weight_dtype: config.weight_dtype });
@@ -410,6 +410,7 @@ export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) 
             cfg: Number(config.cfg), sampler_name: config.sampler, scheduler: config.scheduler, denoise: 1 });
     }
     const decoded = decode(sampled, vae);
-    const output = sketch || operation === 'bbox' ? add('PreviewImage', { images: decoded }) : add('SaveImage', { images: decoded, filename_prefix: `anima-manga-maker/${jobId}/result` });
+    // Sketch, BBox and project style previews stay in ComfyUI's temp folder instead of the project.
+    const output = sketch || ['bbox', 'style'].includes(operation) ? add('PreviewImage', { images: decoded }) : add('SaveImage', { images: decoded, filename_prefix: `anima-manga-maker/${jobId}/result` });
     return { graph, outputNode: output[0] };
 }

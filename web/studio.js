@@ -11,8 +11,9 @@ import { StoryStudio } from './story.js';
 import { assistantSettings } from './assistant.js';
 import { styleSource, openStylePicker } from './style-picker.js';
 
-const spaces = { story: 'Story', references: 'References', panels: 'Panels', refine: 'Refinement', design: 'Page layout', finish: 'Finishing' };
+const spaces = { story: 'Story', style: 'Style', references: 'References', panels: 'Panels', refine: 'Refinement', design: 'Page layout', finish: 'Finishing' };
 const engines = { krea: 'Krea2', krea_edit: 'Krea2 Edit', qwen: 'Qwen Image 2.1', moss: 'moss', anima: 'anima', anima_edit: 'Anima Ref' };
+const styleEngines = { anima: 'anima', krea: 'Krea2', qwen: 'Qwen Image 2.1', moss: 'moss' };
 const textTasks = { enhance: 'Enhance section', describe: 'Create reference prompt' };
 const clone = x => structuredClone(x);
 
@@ -20,7 +21,7 @@ export class Studio {
     constructor() {
         this.observers = []; this.views = new Map(); this.abort = new AbortController(); this.active = localStorage.getItem('amm-space') || 'references';
         this.busy = new Set(); this.progress = new Map(); this.saving = Promise.resolve(); this.galleryRefresh = new Map(); this.referenceRefresh = new Map(); this.pendingRefresh = new Map();
-        this.assetMenu = null;
+        this.assetMenu = null; this.stylePreviews = [];
         document.addEventListener('pointerdown', e => { if (this.assetMenu && !this.assetMenu.parentElement.contains(e.target)) this.closeAssetMenu(); }, { signal: this.abort.signal });
         this.dialog = el('dialog', { class: 'amm-studio', lang: 'en', 'aria-label': 'Anima Manga Maker Studio' });
         this.header = el('header', { class: 'amm-header' }); this.nav = el('nav', { class: 'amm-nav', 'aria-label': 'Workspaces' });
@@ -79,15 +80,58 @@ export class Studio {
         delete config.width; delete config.height;
         return inheritModels(config, this.settings.models[engine], engine);
     }
+    // Anima reads booru tags and free text alike, so it inherits both project styles, tags first.
+    projectStyle(engine) {
+        const sources = styleSource(engine) === 'animadex' ? ['animadex', 'stylebook'] : [styleSource(engine)];
+        return sources.map(source => this.project.style?.[source]?.trim()).filter(Boolean).join('\n');
+    }
+    // The operation's settings with the project style in the Style section, unless the operation overrides it.
+    styled(cfg) {
+        const style = !cfg.style_override && this.projectStyle(cfg.engine);
+        return style ? { ...cfg, prompt_sections: { ...cfg.prompt_sections, style } } : cfg;
+    }
+    styleView(view) {
+        const space = 'style', state = this.state(space), style = this.project.style ||= {};
+        if (!styleEngines[state.engine]) state.engine = 'anima';
+        const controls = el('aside', { class: 'amm-controls' }, el('h2', { text: 'Project style' }),
+            el('small', { text: 'References, panels, refinement and Sketch to Art use this style in the Style section unless an operation turns off "Use project style".' }));
+        const previewControls = el('div');
+        const renderPreviewControls = () => {
+            const cfg = this.config(space); cfg.engine = state.engine;
+            previewControls.replaceChildren(); this.essentials(previewControls, cfg, space); this.runBar(previewControls, cfg, space, 'Generate preview');
+            this.jobs();
+        };
+        // Other workspaces show the inherited style when they are next opened.
+        const changed = () => { for (const other of ['references', 'panels', 'refine', 'finish']) if (this.views.has(other)) this.rebuild(other); this.saveSoon(); renderPreviewControls(); };
+        for (const [source, label, engines] of [['animadex', 'Anime tags', 'Anima and Anima Ref'], ['stylebook', 'Natural-language style', 'all engines']]) {
+            const input = el('textarea', { value: style[source] || '', rows: 4, 'aria-label': label, oninput: e => { style[source] = e.target.value; this.saveSoon(); }, onchange: changed });
+            controls.append(field(`${label} · ${engines}`, input), iconButton(source === 'animadex' ? 'Browse Animadex styles and characters' : 'Browse Stylebook styles', 'image', () => openStylePicker(this, source, (key, update) => {
+                input.value = style[source] = update(input.value); changed();
+            }), {}, true));
+        }
+        const engine = el('select', { 'aria-label': 'Preview engine', onchange: e => { state.engine = e.target.value; this.saveSoon(); renderPreviewControls(); } },
+            ...Object.entries(styleEngines).map(([value, text]) => el('option', { value, text })));
+        engine.value = state.engine;
+        controls.append(el('h3', { text: 'Preview' }), el('small', { text: 'Generate test images to tune the style. Previews stay in ComfyUI\'s temp folder and are not saved to the project.' }), field('Engine', engine), previewControls);
+        const gallery = el('div', { class: 'amm-style-previews' });
+        this.renderStylePreviews = () => {
+            const previews = this.stylePreviews.filter(p => p.project === this.project.id);
+            gallery.replaceChildren(...previews.length ? previews.map(p => el('figure', {}, el('img', { src: p.url, alt: `Style preview · ${engines[p.engine]}` }), el('figcaption', { text: engines[p.engine] })))
+                : [el('div', { class: 'amm-empty', text: 'Generated previews appear here. They are discarded when you close Studio.' })]);
+        };
+        const area = el('section', { class: 'amm-preview-area' }, el('div', { class: 'amm-row' }, button('Clear previews', () => { this.stylePreviews = this.stylePreviews.filter(p => p.project !== this.project.id); this.renderStylePreviews(); })), gallery);
+        view.append(controls, area); this.controlLayout(view, controls, space); renderPreviewControls(); this.renderStylePreviews();
+    }
     switch(space) {
         this.active = spaces[space] ? space : 'references'; localStorage.setItem('amm-space', this.active); this.renderNav();
         if (!this.project) return this.empty();
         for (const view of this.views.values()) view.hidden = true;
         let view = this.views.get(this.active);
         if (!view) {
-            view = el('section', { class: `amm-workspace mm-${this.active}` }); this.views.set(this.active, view); this.body.append(view);
+            view = el('section', { class: `amm-workspace amm-${this.active}` }); this.views.set(this.active, view); this.body.append(view);
             if (this.active === 'design') this.design(view);
             else if (this.active === 'story') this.storyView = new StoryStudio(this, view);
+            else if (this.active === 'style') this.styleView(view);
             else if (this.active === 'refine') this.refine(view);
             else if (this.active === 'finish') this.finish(view);
             else this.generateView(view, this.active);
@@ -104,7 +148,7 @@ export class Studio {
         clearTimeout(this.saveTimer);
         if (!this.project) return this.saving;
         const project = this.project;
-        const patch = clone({ config: project.config, presets: project.presets, layouts: project.layouts, workspace: project.workspace, story: project.story || {} });
+        const patch = clone({ config: project.config, presets: project.presets, layouts: project.layouts, workspace: project.workspace, story: project.story || {}, style: project.style || {} });
         this.saving = this.saving.catch(() => {}).then(() => request(`/projects/${project.id}`, { ...patch, revision: project.revision }, 'PUT')).then(saved => { project.revision = saved.revision; this.status.dataset.save = 'saved'; }).catch(error => {
             if (error.status === 409 && this.project === project) return this.reload();
             this.status.dataset.save = 'error'; this.fail(new Error(`Could not save: ${error.message}`)); throw error;
@@ -409,13 +453,13 @@ export class Studio {
         let previewTimer;
         const combined = el('details', { class: 'amm-prompt-combined', ontoggle: () => {
             clearTimeout(previewTimer);
-            if (combined.open) preview.value = composePrompt(cfg);
+            if (combined.open) preview.value = composePrompt(this.styled(cfg));
         } }, el('summary', { text: 'Show combined prompt' }), preview);
         const update = () => {
             changed();
             clearTimeout(previewTimer);
             if (combined.open) previewTimer = setTimeout(() => {
-                if (combined.isConnected && combined.open) preview.value = composePrompt(cfg);
+                if (combined.isConnected && combined.open) preview.value = composePrompt(this.styled(cfg));
             }, 150);
         };
         const group = el('details', { class: 'amm-prompt-sections', open: true }, el('summary', { text: 'Structured prompt' }),
@@ -429,12 +473,15 @@ export class Studio {
         task.querySelector('input').placeholder = 'TEXT_TO_IMAGE';
         task.querySelector('input').addEventListener('input', e => { sections.task = e.target.value; update(); });
         group.append(task);
-        const inputs = {};
-        if (styleSource(cfg.engine)) group.append(el('div', { class: 'amm-row' }, iconButton(styleSource(cfg.engine) === 'animadex' ? 'Browse Animadex styles and characters' : 'Browse Stylebook styles', 'image',
-            () => openStylePicker(this, cfg.engine, (key, update) => {
+        const inputs = {}, inherited = this.projectStyle(cfg.engine);
+        let showStyle = () => {};
+        const pickers = ['anima', 'anima_edit'].includes(cfg.engine) ? ['animadex', 'stylebook'] : styleSource(cfg.engine) ? ['stylebook'] : [];
+        if (pickers.length) group.append(el('div', { class: 'amm-row' }, ...pickers.map(source => iconButton(source === 'animadex' ? 'Browse Animadex styles and characters' : 'Browse Stylebook styles', 'image',
+            () => openStylePicker(this, source, (key, update) => {
+                if (key === 'style' && inherited && !cfg.style_override) { cfg.style_override = true; showStyle(); }
                 const input = inputs[key]; input.value = update(input.value);
                 input.dispatchEvent(new Event('input')); input.dispatchEvent(new Event('change')); input.closest('details').open = true;
-            }), {}, true)));
+            }), {}, true))));
         for (const [key, tag] of promptSections) {
             const status = el('small', { text: snippet(sections[key]), class: sections[key]?.trim() ? 'amm-filled' : '' });
             const input = el('textarea', { value: sections[key] || '', rows: 3, 'aria-label': tag, oninput: e => {
@@ -443,7 +490,14 @@ export class Studio {
                 update();
             }, onchange: e => { status.textContent = snippet(e.target.value); } });
             inputs[key] = input;
-            group.append(el('details', { class: 'amm-prompt-section' }, el('summary', {}, el('span', { text: tag }), status), enhanceField(input, key, tag)));
+            // The project style fills this section until the operation overrides it; the operation's own text is kept for when it does.
+            const useProject = key === 'style' && inherited ? el('input', { type: 'checkbox', checked: !cfg.style_override, onchange: e => { cfg.style_override = !e.target.checked; showStyle(); update(); } }) : null;
+            if (useProject) showStyle = () => {
+                useProject.checked = !cfg.style_override; input.disabled = useProject.checked; input.value = useProject.checked ? inherited : sections.style || '';
+                status.textContent = useProject.checked ? `Project · ${snippet(inherited)}` : snippet(sections.style); status.classList.toggle('amm-filled', !!input.value.trim());
+            };
+            group.append(el('details', { class: 'amm-prompt-section' }, el('summary', {}, el('span', { text: tag }), status),
+                useProject ? toggle('Use project style', useProject, 'Turn off to write a style for this operation only.') : null, enhanceField(input, key, tag)));
         }
         const free = el('textarea', { class: 'amm-prompt', value: cfg.prompt || '', placeholder: editing ? 'Additional instructions or a complete editing prompt…' : 'Additional text or any prompt outside this format…', oninput: e => { cfg.prompt = e.target.value; update(); } });
         group.querySelector('summary').append(iconButton('Clear prompt', 'clear', e => {
@@ -452,9 +506,9 @@ export class Studio {
             cfg.prompt = ''; free.value = ''; preview.value = '';
             for (const input of group.querySelectorAll('input, textarea')) input.value = '';
             for (const status of group.querySelectorAll('.amm-prompt-section summary small')) { status.textContent = 'Empty'; status.classList.remove('amm-filled'); }
-            clearTimeout(previewTimer); filled(); changed();
+            showStyle(); clearTimeout(previewTimer); filled(); changed();
         }, { class: 'amm-icon-button amm-prompt-clear', title: 'Clear TASK, all sections, and the free prompt' }));
-        filled(); host.append(group, field('Free prompt', enhanceField(free, 'free', 'free prompt')), combined);
+        showStyle(); filled(); host.append(group, field('Free prompt', enhanceField(free, 'free', 'free prompt')), combined);
     }
     downloadImageAction(asset) {
         return iconButton('Download image', 'download', () => {
@@ -834,9 +888,10 @@ export class Studio {
             if (dialogue) {
                 if (!dialogue.text.trim()) throw new Error('Enter dialogue text before enhancing it.');
                 cfg.instruction = `Improve this manga dialogue or thought text for clarity, natural phrasing and concision. Preserve its original language, meaning, speaker voice, names and tone. Do not invent story details or turn it into an image prompt. Return only the improved dialogue, without tags, quotation marks, markdown fences or explanations.\n\nText to improve:\n${dialogue.text}`;
-            } else if (textTask) cfg.instruction = textInstruction(operation, this.config(space), section);
+            } else if (textTask) cfg.instruction = textInstruction(operation, this.styled(this.config(space)), section);
+            if (!textTask) cfg.prompt_sections = this.styled(cfg).prompt_sections;
             if (cfg.random_seed) cfg.seed = Math.floor(Math.random() * 2 ** 48);
-            let ids = textTask ? operation === 'describe' ? [assetId] : [] : ['refine', 'finish', 'analysis'].includes(operation) ? [state.source].filter(Boolean) : ['moss', 'anima'].includes(engine) ? [] : cfg.references;
+            let ids = textTask ? operation === 'describe' ? [assetId] : [] : ['refine', 'finish', 'analysis'].includes(operation) ? [state.source].filter(Boolean) : ['moss', 'anima'].includes(engine) || operation === 'style' ? [] : cfg.references;
             if (['refine', 'finish', 'analysis'].includes(operation) && !ids.length) throw new Error('Select the original.');
             const unavailable = ids.find(id => !project.assets.some(a => a.id === id && !a.missing && !a.deleted));
             if (unavailable) {
@@ -928,6 +983,7 @@ export class Studio {
                     const space = job.operation === 'analysis' ? 'finish' : job.operation;
                     if (job.operation in textTasks) this.textResult(job);
                     else if (job.operation === 'analysis') { this.config('finish', 'qwen').prompt = job.text || ''; this.rebuild('finish'); }
+                    else if (job.operation === 'style' && job.drawing_output) { this.stylePreviews.unshift({ project: project.id, engine: job.engine, url: api.apiURL('/view?' + new URLSearchParams(job.drawing_output)) }); this.renderStylePreviews?.(); }
                     else if (['refine', 'finish'].includes(space) && job.results?.length) this.state(space).result = job.results[0];
                     this.saveSoon();
                 }
