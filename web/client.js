@@ -10,18 +10,18 @@ export function uuid() {
 }
 
 export async function request(path, body, method = 'GET') {
-    const result = await api.fetchApi(`/manga-maker${path}`, {
+    const result = await api.fetchApi(`/anima-manga-maker${path}`, {
         method, ...(body instanceof FormData ? { body } : body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
     });
     if (!result.ok) {
         let data;
-        try { data = await result.json(); } catch { throw new Error(`Server: ${result.status}. Restart ComfyUI to load Manga Maker Studio when no jobs are active.`); }
+        try { data = await result.json(); } catch { throw new Error(`Server: ${result.status}. Restart ComfyUI to load Anima Manga Maker Studio when no jobs are active.`); }
         throw Object.assign(new Error(data.error || JSON.stringify(data)), { status: result.status });
     }
     return result.json();
 }
 export function assetUrl(project, asset, thumb = false) {
-    return api.apiURL(`/manga-maker/projects/${project}/assets/${asset}${thumb ? '?thumb=1' : ''}`);
+    return api.apiURL(`/anima-manga-maker/projects/${project}/assets/${asset}${thumb ? '?thumb=1' : ''}`);
 }
 export function download(name, data) {
     const blob = data instanceof Blob ? data : new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -87,14 +87,14 @@ const iconPaths = {
 };
 export function icon(name) {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    for (const [key, value] of Object.entries({ viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': name === 'more' ? 4 : 1.7, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true', class: 'mm-icon' })) svg.setAttribute(key, value);
+    for (const [key, value] of Object.entries({ viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': name === 'more' ? 4 : 1.7, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true', class: 'amm-icon' })) svg.setAttribute(key, value);
     const path = document.createElementNS(svg.namespaceURI, 'path'); path.setAttribute('d', iconPaths[name]); svg.append(path); return svg;
 }
 export function iconButton(label, name, action, attrs = {}, showLabel = false) {
-    const node = button('', action, { class: 'mm-icon-button', 'aria-label': label, title: label, ...attrs });
+    const node = button('', action, { class: 'amm-icon-button', 'aria-label': label, title: label, ...attrs });
     node.append(icon(name)); if (showLabel) node.append(el('span', { text: label })); return node;
 }
-export const field = (label, input, help = '') => el('label', { class: 'mm-field' }, el('span', { text: label }), input, help ? el('small', { text: help }) : null);
+export const field = (label, input, help = '') => el('label', { class: 'amm-field' }, el('span', { text: label }), input, help ? el('small', { text: help }) : null);
 export function sizeControls(value, changed, disabled = false) {
     const size = sizeSettings(value);
     let aspect = size.aspect_ratio;
@@ -104,16 +104,16 @@ export function sizeControls(value, changed, disabled = false) {
         for (const node of ratios.children) node.setAttribute('aria-pressed', String(node.dataset.ratio === aspect));
         mp.setCustomValidity(''); changed(next);
     };
-    const ratios = el('div', { class: 'mm-aspect-grid', role: 'group', 'aria-label': 'Aspect ratio' },
+    const ratios = el('div', { class: 'amm-aspect-grid', role: 'group', 'aria-label': 'Aspect ratio' },
         ...[...new Set([...aspectRatios, aspect])].map(value => {
             const [x, y] = value.split(':').map(Number), longest = Math.max(x, y);
             const label = value === '210:297' ? 'A4 · portrait' : value === '297:210' ? 'A4 · landscape' : value;
-            const node = button('', () => { aspect = value; update(); }, { class: 'mm-aspect-button', disabled, 'data-ratio': value, 'aria-label': label, title: label, 'aria-pressed': String(value === aspect) });
-            node.append(el('span', { class: 'mm-aspect-icon', 'aria-hidden': 'true' }, el('span', { style: `width:${28 * x / longest}px;height:${28 * y / longest}px` })), el('span', { text: label.startsWith('A4') ? value === '210:297' ? 'A4 ↕' : 'A4 ↔' : value }));
+            const node = button('', () => { aspect = value; update(); }, { class: 'amm-aspect-button', disabled, 'data-ratio': value, 'aria-label': label, title: label, 'aria-pressed': String(value === aspect) });
+            node.append(el('span', { class: 'amm-aspect-icon', 'aria-hidden': 'true' }, el('span', { style: `width:${28 * x / longest}px;height:${28 * y / longest}px` })), el('span', { text: label.startsWith('A4') ? value === '210:297' ? 'A4 ↕' : 'A4 ↔' : value }));
             return node;
         }));
     const mp = el('input', { type: 'number', 'aria-label': 'Resolution · MP', 'data-size': 'megapixels', disabled, value: size.megapixels, min: 0.000001, step: 'any', onchange: update });
-    return el('div', { class: 'mm-resolution' }, el('fieldset', { class: 'mm-aspect-field' }, el('legend', { text: 'Aspect ratio' }), ratios), field('Resolution · MP', mp));
+    return el('div', { class: 'amm-resolution' }, el('fieldset', { class: 'amm-aspect-field' }, el('legend', { text: 'Aspect ratio' }), ratios), field('Resolution · MP', mp));
 }
 export function chooseFile(accept, action, multiple = false) {
     const input = el('input', { type: 'file', accept, multiple });

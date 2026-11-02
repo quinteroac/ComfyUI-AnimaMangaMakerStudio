@@ -18,24 +18,24 @@ const clone = x => structuredClone(x);
 
 export class Studio {
     constructor() {
-        this.observers = []; this.views = new Map(); this.abort = new AbortController(); this.active = localStorage.getItem('mm-space') || 'references';
+        this.observers = []; this.views = new Map(); this.abort = new AbortController(); this.active = localStorage.getItem('amm-space') || 'references';
         this.busy = new Set(); this.progress = new Map(); this.saving = Promise.resolve(); this.galleryRefresh = new Map(); this.referenceRefresh = new Map(); this.pendingRefresh = new Map();
         this.assetMenu = null;
         document.addEventListener('pointerdown', e => { if (this.assetMenu && !this.assetMenu.parentElement.contains(e.target)) this.closeAssetMenu(); }, { signal: this.abort.signal });
-        this.dialog = el('dialog', { class: 'mm-studio', lang: 'en', 'aria-label': 'Manga Maker Studio' });
-        this.header = el('header', { class: 'mm-header' }); this.nav = el('nav', { class: 'mm-nav', 'aria-label': 'Workspaces' });
-        this.body = el('main', { class: 'mm-body' }); this.error = el('div', { class: 'mm-error', role: 'alert', hidden: true });
-        this.status = el('footer', { class: 'mm-status', role: 'status' }); this.toasts = el('div', { class: 'mm-toasts', role: 'status', 'aria-live': 'polite' });
+        this.dialog = el('dialog', { class: 'amm-studio', lang: 'en', 'aria-label': 'Anima Manga Maker Studio' });
+        this.header = el('header', { class: 'amm-header' }); this.nav = el('nav', { class: 'amm-nav', 'aria-label': 'Workspaces' });
+        this.body = el('main', { class: 'amm-body' }); this.error = el('div', { class: 'amm-error', role: 'alert', hidden: true });
+        this.status = el('footer', { class: 'amm-status', role: 'status' }); this.toasts = el('div', { class: 'amm-toasts', role: 'status', 'aria-live': 'polite' });
         this.dialog.append(this.header, this.nav, this.error, this.body, this.status, this.toasts); document.body.append(this.dialog);
         this.dialog.addEventListener('cancel', e => { e.preventDefault(); this.close(); });
         this.dialog.showModal(); this.load().catch(e => this.fail(e));
-        for (const name of ['execution_start', 'progress', 'execution_error', 'execution_interrupted', 'execution_success', 'status', 'manga_maker_error']) api.addEventListener(name, e => this.event(name, e.detail), { signal: this.abort.signal });
+        for (const name of ['execution_start', 'progress', 'execution_error', 'execution_interrupted', 'execution_success', 'status', 'anima_manga_maker_error']) api.addEventListener(name, e => this.event(name, e.detail), { signal: this.abort.signal });
     }
     fail(error) {
         this.error.hidden = false; this.error.replaceChildren(el('span', { text: error.message || String(error) }), iconButton('Dismiss message', 'clear', () => this.error.hidden = true));
     }
     notify(text) {
-        const toast = el('div', { class: 'mm-toast' }, el('span', { text }), iconButton('Dismiss notification', 'clear', () => toast.remove()));
+        const toast = el('div', { class: 'amm-toast' }, el('span', { text }), iconButton('Dismiss notification', 'clear', () => toast.remove()));
         this.toasts.append(toast); setTimeout(() => toast.remove(), 5000);
     }
     async action(fn) { try { return await fn(); } catch (e) { this.fail(e); } }
@@ -45,7 +45,7 @@ export class Studio {
         for (const [engine, state] of Object.entries(this.catalog.downloads)) if (['queued', 'downloading'].includes(state.state)) this.pendingDownloads.add(engine);
         if (this.abort.signal.aborted) return;
         this.renderHeader(); this.renderNav();
-        const id = localStorage.getItem('mm-project');
+        const id = localStorage.getItem('amm-project');
         if (this.projects.some(p => p.id === id)) await this.open(id);
         else this.empty();
         this.timer = setInterval(() => this.poll(), 2000);
@@ -53,21 +53,21 @@ export class Studio {
     renderHeader() {
         const select = el('select', { 'aria-label': 'Active project', onchange: e => this.action(() => this.open(e.target.value)) }, el('option', { value: '', text: 'Select a project', disabled: true }), ...this.projects.map(p => el('option', { value: p.id, text: p.name })));
         select.value = this.project?.id || '';
-        this.header.replaceChildren(el('div', { class: 'mm-brand' }, el('strong', { text: 'Manga Maker' }), el('span', { text: 'STUDIO' })), select,
+        this.header.replaceChildren(el('div', { class: 'amm-brand' }, el('strong', { text: 'Anima Manga Maker' }), el('span', { text: 'STUDIO' })), select,
             iconButton('Projects', 'folder', () => this.projectManager()), iconButton('Settings', 'settings', () => this.globalSettings()),
-            iconButton('Back to ComfyUI', 'back', () => this.close(), { class: 'mm-icon-button mm-close' }));
+            iconButton('Back to ComfyUI', 'back', () => this.close(), { class: 'amm-icon-button amm-close' }));
     }
     renderNav() {
         this.nav.replaceChildren(...Object.entries(spaces).map(([key, title]) => button(title, () => this.switch(key), { 'aria-current': this.active === key ? 'page' : 'false' })));
     }
-    empty() { this.body.replaceChildren(el('div', { class: 'mm-empty' }, el('h1', { text: 'Your manga starts here' }), el('p', { text: 'Create a project to store references, panels, and pages on your computer.' }), button('Create project', () => this.createProject(), { class: 'mm-primary' }))); }
+    empty() { this.body.replaceChildren(el('div', { class: 'amm-empty' }, el('h1', { text: 'Your manga starts here' }), el('p', { text: 'Create a project to store references, panels, and pages on your computer.' }), button('Create project', () => this.createProject(), { class: 'amm-primary' }))); }
     async open(id) {
         if (!id) return;
         await this.flush();
         this.resetViews();
         const project = await request(`/projects/${id}`);
         if (this.abort.signal.aborted) return;
-        this.project = project; localStorage.setItem('mm-project', id); this.renderHeader(); this.switch(this.active); this.jobs();
+        this.project = project; localStorage.setItem('amm-project', id); this.renderHeader(); this.switch(this.active); this.jobs();
     }
     closeAssetMenu() { if (this.assetMenu?.matches(':popover-open')) this.assetMenu.hidePopover(); this.assetMenu = null; }
     resetViews() { this.closeAssetMenu(); this.observers.forEach(o => o.disconnect()); this.observers = []; this.editor?.destroy(); this.editor = null; this.storyView?.destroy(); this.storyView = null; this.views.clear(); this.galleryRefresh.clear(); this.referenceRefresh.clear(); this.pendingRefresh.clear(); this.body.replaceChildren(); }
@@ -80,12 +80,12 @@ export class Studio {
         return inheritModels(config, this.settings.models[engine], engine);
     }
     switch(space) {
-        this.active = spaces[space] ? space : 'references'; localStorage.setItem('mm-space', this.active); this.renderNav();
+        this.active = spaces[space] ? space : 'references'; localStorage.setItem('amm-space', this.active); this.renderNav();
         if (!this.project) return this.empty();
         for (const view of this.views.values()) view.hidden = true;
         let view = this.views.get(this.active);
         if (!view) {
-            view = el('section', { class: `mm-workspace mm-${this.active}` }); this.views.set(this.active, view); this.body.append(view);
+            view = el('section', { class: `amm-workspace mm-${this.active}` }); this.views.set(this.active, view); this.body.append(view);
             if (this.active === 'design') this.design(view);
             else if (this.active === 'story') this.storyView = new StoryStudio(this, view);
             else if (this.active === 'refine') this.refine(view);
@@ -122,15 +122,15 @@ export class Studio {
         this.onClose?.();
     }
     modal(title, content, ...actions) {
-        const dialog = el('dialog', { class: 'mm-modal', 'aria-label': title }, el('header', { class: 'mm-modal-header' }, el('h2', { text: title }),
-            iconButton('Close', 'clear', () => dialog.close(), { class: 'mm-icon-button mm-modal-close' })), el('div', { class: 'mm-modal-body' }, content),
-            actions.length ? el('footer', { class: 'mm-dialog-actions' }, ...actions) : null);
+        const dialog = el('dialog', { class: 'amm-modal', 'aria-label': title }, el('header', { class: 'amm-modal-header' }, el('h2', { text: title }),
+            iconButton('Close', 'clear', () => dialog.close(), { class: 'amm-icon-button amm-modal-close' })), el('div', { class: 'amm-modal-body' }, content),
+            actions.length ? el('footer', { class: 'amm-dialog-actions' }, ...actions) : null);
         dialog.addEventListener('close', () => dialog.remove()); this.dialog.append(dialog); dialog.showModal(); return dialog;
     }
     ask(title, value, fn) {
         const input = el('input', { value, required: true, 'aria-label': title });
-        const actions = el('div', { class: 'mm-dialog-actions' }, button('Cancel', () => dialog.close()), el('button', { type: 'submit', text: 'Save', class: 'mm-primary' }));
-        const form = el('form', { class: 'mm-name-form', onsubmit: e => { e.preventDefault(); this.action(async () => { await fn(input.value); dialog.close(); }); } }, input, actions);
+        const actions = el('div', { class: 'amm-dialog-actions' }, button('Cancel', () => dialog.close()), el('button', { type: 'submit', text: 'Save', class: 'amm-primary' }));
+        const form = el('form', { class: 'amm-name-form', onsubmit: e => { e.preventDefault(); this.action(async () => { await fn(input.value); dialog.close(); }); } }, input, actions);
         const dialog = this.modal(title, form); input.focus(); input.select();
     }
     clonePreset(presets, name, save) {
@@ -142,16 +142,16 @@ export class Studio {
     }
     confirm(title, fn) {
         const dialog = this.modal(title, el('p', { text: 'Confirm this operation. Removed assets can be recovered using the Trash filter.' }),
-            button('Cancel', () => dialog.close()), button('Confirm', () => this.action(async () => { await fn(); dialog.close(); }), { class: 'mm-danger' }));
+            button('Cancel', () => dialog.close()), button('Confirm', () => this.action(async () => { await fn(); dialog.close(); }), { class: 'amm-danger' }));
     }
     createProject(onCreated) { this.ask('Project name', 'New manga', async name => { const p = await request('/projects', { name }, 'POST'); this.projects = await request('/projects'); await this.open(p.id); onCreated?.(); }); }
     projectManager() {
-        const list = el('div', { class: 'mm-project-list' });
-        for (const p of this.projects) list.append(el('div', { class: 'mm-project-row' }, el('strong', { text: p.name }), el('div', { class: 'mm-project-actions', role: 'group', 'aria-label': `Actions for ${p.name}` }, button('Open', () => this.action(async () => { await this.open(p.id); dialog.close(); })),
+        const list = el('div', { class: 'amm-project-list' });
+        for (const p of this.projects) list.append(el('div', { class: 'amm-project-row' }, el('strong', { text: p.name }), el('div', { class: 'amm-project-actions', role: 'group', 'aria-label': `Actions for ${p.name}` }, button('Open', () => this.action(async () => { await this.open(p.id); dialog.close(); })),
             button('Rename', () => this.ask('Rename project', p.name, async name => { await request(`/projects/${p.id}`, { name }, 'PUT'); this.projects = await request('/projects'); if (this.project?.id === p.id) this.project.name = name; this.renderHeader(); dialog.close(); this.projectManager(); })),
             button('Duplicate', () => this.ask('Copy name', `${p.name} · copy`, async name => { const copy = await request(`/projects/${p.id}/duplicate`, { name }, 'POST'); this.projects = await request('/projects'); await this.open(copy.id); dialog.close(); })))));
-        if (!this.projects.length) list.append(el('p', { class: 'mm-project-empty', text: 'No projects yet. Create one to get started.' }));
-        const dialog = this.modal('Projects', list, button('Create project', () => this.createProject(() => dialog.close()), { class: 'mm-primary' })); dialog.classList.add('mm-project-dialog');
+        if (!this.projects.length) list.append(el('p', { class: 'amm-project-empty', text: 'No projects yet. Create one to get started.' }));
+        const dialog = this.modal('Projects', list, button('Create project', () => this.createProject(() => dialog.close()), { class: 'amm-primary' })); dialog.classList.add('amm-project-dialog');
     }
     globalSettings() {
         const value = clone(this.settings); this.globalDraft = value;
@@ -176,7 +176,7 @@ export class Studio {
         engineSelect.onchange = render; render();
         this.globalModelRender = render;
         const models = el('div', {}, el('small', { text: 'One model configuration per engine, shared across references, panels, refinement and finishing. Individual fields and presets override only the values they define.' }), field('Global model engine', engineSelect), controls);
-        const transfer = el('div', { class: 'mm-button-grid' }, button('Export global settings', () => download('manga-maker-config.json', value)), button('Import global settings', () => chooseFile('.json', files => this.action(async () => {
+        const transfer = el('div', { class: 'amm-button-grid' }, button('Export global settings', () => download('anima-manga-maker-config.json', value)), button('Import global settings', () => chooseFile('.json', files => this.action(async () => {
                 const imported = JSON.parse(await files[0].text()); if (!imported.presets || (!imported.models && !imported.defaults)) throw new Error('Invalid settings file');
                 value.defaults = imported.defaults || {}; value.models = imported.models || {}; globalModels(value, this.catalog); value.presets = imported.presets; Object.assign(text, textGeneratorDefaults, imported.text_generator || {}); renderText(); render();
             }))), button('Export project settings', () => download('manga-project-settings.json', { config: this.project?.config || {}, presets: this.project?.presets || {}, layouts: this.project?.layouts || {} })),
@@ -186,8 +186,8 @@ export class Studio {
             }))));
         const assistantControls = el('div'); assistantSettings(assistantControls, value, error => this.fail(error)).catch(error => this.fail(error));
         const sections = [['General', general], ['Text generator', textControls], ['Story assistant', assistantControls], ['Models', models], ['Import and export', transfer]].map(([title, content]) => el('section', { 'aria-label': title }, el('h3', { text: title }), content));
-        const form = el('div', { class: 'mm-settings' }, el('nav', { class: 'mm-settings-nav', 'aria-label': 'Settings sections' },
-            ...sections.map(section => button(section.getAttribute('aria-label'), () => section.scrollIntoView({ block: 'start', behavior: 'smooth' })))), el('div', { class: 'mm-settings-sections' }, ...sections));
+        const form = el('div', { class: 'amm-settings' }, el('nav', { class: 'amm-settings-nav', 'aria-label': 'Settings sections' },
+            ...sections.map(section => button(section.getAttribute('aria-label'), () => section.scrollIntoView({ block: 'start', behavior: 'smooth' })))), el('div', { class: 'amm-settings-sections' }, ...sections));
         const dialog = this.modal('Global settings', form, button('Refresh models and nodes', () => this.action(async () => { this.defs = await api.getNodeDefs(); this.catalog = await request('/models'); renderText(); render(); })),
             button('Save global settings', () => this.action(async () => { let savedBeforeMove = true;
                 try { await this.flush(); } catch (error) { if (value.root === this.settings.root) throw error; savedBeforeMove = false; }
@@ -196,8 +196,8 @@ export class Studio {
                     if (this.project && !savedBeforeMove) throw new Error('The new root folder does not contain the active project. Changes remain in memory; select the folder containing the relocated project.');
                     this.project = null; this.resetViews(); this.empty();
                 } else await this.flush();
-                this.error.hidden = true; this.resetViews(); this.renderHeader(); this.switch(this.active); dialog.close(); }), { class: 'mm-primary' }));
-        dialog.classList.add('mm-settings-dialog');
+                this.error.hidden = true; this.resetViews(); this.renderHeader(); this.switch(this.active); dialog.close(); }), { class: 'amm-primary' }));
+        dialog.classList.add('amm-settings-dialog');
         dialog.addEventListener('close', () => { this.globalDraft = null; this.globalModelRender = null; });
     }
     modelControls(host, cfg, engine, changed, expanded = false, space = this.active, restoreView = () => this.rebuild(space)) {
@@ -246,7 +246,7 @@ export class Studio {
         if (expanded) this.samplingControls(host, cfg, engine, changed, space, true);
     }
     officialModelControls(host, engine) {
-        const panel = el('div', { class: 'mm-official-models' }); host.append(panel);
+        const panel = el('div', { class: 'amm-official-models' }); host.append(panel);
         const render = () => {
             const profile = this.catalog.profiles[engine], state = this.catalog.downloads[engine];
             if (profile.local) {
@@ -295,8 +295,8 @@ export class Studio {
         const details = el('details', {}, el('summary', { text: `LoRAs · ${cfg.loras.filter(l => l.enabled).length} enabled` }));
         const rows = el('div'); const refresh = () => {
             details.querySelector('summary').textContent = `LoRAs · ${cfg.loras.filter(l => l.enabled).length} enabled`;
-            rows.replaceChildren(...cfg.loras.map((l, index) => el('div', { class: `mm-lora${l.enabled ? '' : ' mm-disabled'}` },
-                el('div', { class: 'mm-row' }, toggle('Enabled', el('input', { type: 'checkbox', checked: l.enabled, onchange: e => { l.enabled = e.target.checked; changed(); refresh(); } })),
+            rows.replaceChildren(...cfg.loras.map((l, index) => el('div', { class: `amm-lora${l.enabled ? '' : ' amm-disabled'}` },
+                el('div', { class: 'amm-row' }, toggle('Enabled', el('input', { type: 'checkbox', checked: l.enabled, onchange: e => { l.enabled = e.target.checked; changed(); refresh(); } })),
                     iconButton('Move LoRA up', 'up', () => { [cfg.loras[index - 1], cfg.loras[index]] = [l, cfg.loras[index - 1]]; changed(); refresh(); }, { disabled: !index }),
                     iconButton('Move LoRA down', 'down', () => { [cfg.loras[index + 1], cfg.loras[index]] = [l, cfg.loras[index + 1]]; changed(); refresh(); }, { disabled: index === cfg.loras.length - 1 }),
                     iconButton('Remove', 'trash', () => { cfg.loras.splice(index, 1); changed(); refresh(); })),
@@ -304,12 +304,12 @@ export class Studio {
                 slider('Model strength', el('input', { type: 'number', value: l.model, step: 0.05, onchange: e => { l.model = Number(e.target.value); changed(); } }), [0, 2]),
                 ['krea_edit', 'moss', 'anima', 'anima_edit'].some(engine => scope.endsWith(`:${engine}`)) ? null : slider('Encoder strength', el('input', { type: 'number', value: l.clip, step: 0.05, onchange: e => { l.clip = Number(e.target.value); changed(); } }), [0, 2]))));
         }; refresh();
-        details.append(rows, iconButton('Add LoRA', 'plus', () => { cfg.loras.push({ enabled: true, name: '', model: 1, clip: 1 }); changed(); refresh(); }, {}, true), el('div', { class: 'mm-row' },
+        details.append(rows, iconButton('Add LoRA', 'plus', () => { cfg.loras.push({ enabled: true, name: '', model: 1, clip: 1 }); changed(); refresh(); }, {}, true), el('div', { class: 'amm-row' },
             button('Save LoRA preset', () => this.ask('LoRA preset name', '', name => { const key = scope; (presetStore[key] ||= {})[`LoRAs · ${name}`] = { loras: clone(cfg.loras) }; this.saveSoon(); })),
             button('Load LoRA preset', () => {
                 const presets = { ...(this.settings.presets[scope] || {}), ...(presetStore[scope] || {}) };
                 const list = el('div');
-                const render = () => list.replaceChildren(...Object.entries(presets).filter(([, v]) => v.loras).map(([name, value]) => el('div', { class: 'mm-row' },
+                const render = () => list.replaceChildren(...Object.entries(presets).filter(([, v]) => v.loras).map(([name, value]) => el('div', { class: 'amm-row' },
                     button(name, () => { cfg.loras = clone(value.loras); changed(); refresh(); }),
                     iconButton(`Clone LoRA preset ${name}`, 'copy', () => this.clonePreset(presets, name, (copyName, copy) => {
                         (presetStore[scope] ||= {})[copyName] = copy; presets[copyName] = copy; render();
@@ -331,7 +331,7 @@ export class Studio {
         if ((engine === 'krea_edit' || (engine === 'anima_edit' && space === 'sketch')) && !global) {
             const denoise = slider('Denoise', el('input', { type: 'number', 'aria-label': 'Denoise', value: cfg.denoise, min: 0, max: 1, step: 0.05,
                 onchange: e => { const value = Number(e.target.value); if (Number.isFinite(value)) set('denoise', value); } }), [0, 1], 'Lower values preserve more of the initial latent image.');
-            denoise.classList.add('mm-edit-denoise'); denoise.hidden = space !== 'sketch' && !cfg.latent_reference; group.append(denoise);
+            denoise.classList.add('amm-edit-denoise'); denoise.hidden = space !== 'sketch' && !cfg.latent_reference; group.append(denoise);
         }
         group.append(combo('Sampler', options(this.defs, 'KSampler', 'sampler_name'), cfg.sampler, value => set('sampler', value)),
             combo('Scheduler', options(this.defs, 'KSampler', 'scheduler'), cfg.scheduler, value => set('scheduler', value)));
@@ -377,7 +377,7 @@ export class Studio {
         } }, el('option', { value: '', text: 'Preset…' }), ...Object.keys(named).map(name => el('option', { value: name, text: name })));
         select.value = this.state(space).preset || '';
         if (select.value && this.state(space).preset_modified) select.selectedOptions[0].textContent = `${select.value} · Modified`;
-        host.append(el('div', { class: 'mm-preset' }, field('Preset · changing settings creates a variant', select), el('div', { class: 'mm-row' }, iconButton('Save settings as preset', 'save', () => this.ask('Preset name', this.state(space).preset || '', name => { (this.project.presets[key] ||= {})[name] = savedPreset(cfg); this.state(space).preset = name; this.state(space).preset_modified = false; this.saveSoon(); refresh(); })),
+        host.append(el('div', { class: 'amm-preset' }, field('Preset · changing settings creates a variant', select), el('div', { class: 'amm-row' }, iconButton('Save settings as preset', 'save', () => this.ask('Preset name', this.state(space).preset || '', name => { (this.project.presets[key] ||= {})[name] = savedPreset(cfg); this.state(space).preset = name; this.state(space).preset_modified = false; this.saveSoon(); refresh(); })),
             iconButton('Clone preset', 'copy', () => this.clonePreset(named, select.value, (name, value) => {
                 if (builtins[select.value] === named[select.value] && cfg.engine === 'krea_edit') value.prompt_sections.task = 'IMAGE_EDIT';
                 (this.project.presets[key] ||= {})[name] = value; this.state(space).preset = name; refresh();
@@ -396,18 +396,18 @@ export class Studio {
     essentials(host, cfg, space, editing = false) {
         const changed = () => this.presetChanged(space);
         this.promptControls(host, cfg, changed, editing || cfg.engine === 'krea_edit', space);
-        host.append(el('div', { class: 'mm-size-controls' })); this.resolutionControls(host, cfg, space, editing);
+        host.append(el('div', { class: 'amm-size-controls' })); this.resolutionControls(host, cfg, space, editing);
         this.samplingControls(host, cfg, cfg.engine, changed, space); this.modelControls(host, cfg, cfg.engine, changed, false, space);
     }
     runBar(host, cfg, space, label, operation = space) {
-        host.append(el('div', { class: 'mm-run-bar' }, seed('Seed', cfg, () => this.presetChanged(space), 'Random seed for each generation'),
-            button(label, () => this.action(() => this.run(operation)), { class: 'mm-primary', 'data-run': operation }), el('small', { class: 'mm-run-hint' })));
+        host.append(el('div', { class: 'amm-run-bar' }, seed('Seed', cfg, () => this.presetChanged(space), 'Random seed for each generation'),
+            button(label, () => this.action(() => this.run(operation)), { class: 'amm-primary', 'data-run': operation }), el('small', { class: 'amm-run-hint' })));
     }
     promptControls(host, cfg, changed, editing = false, space) {
         const sections = cfg.prompt_sections ||= {};
-        const preview = el('textarea', { class: 'mm-prompt-preview', readOnly: true, 'aria-label': 'Combined prompt' });
+        const preview = el('textarea', { class: 'amm-prompt-preview', readOnly: true, 'aria-label': 'Combined prompt' });
         let previewTimer;
-        const combined = el('details', { class: 'mm-prompt-combined', ontoggle: () => {
+        const combined = el('details', { class: 'amm-prompt-combined', ontoggle: () => {
             clearTimeout(previewTimer);
             if (combined.open) preview.value = composePrompt(cfg);
         } }, el('summary', { text: 'Show combined prompt' }), preview);
@@ -418,11 +418,11 @@ export class Studio {
                 if (combined.isConnected && combined.open) preview.value = composePrompt(cfg);
             }, 150);
         };
-        const group = el('details', { class: 'mm-prompt-sections', open: true }, el('summary', { text: 'Structured prompt' }),
+        const group = el('details', { class: 'amm-prompt-sections', open: true }, el('summary', { text: 'Structured prompt' }),
             el('small', { text: 'Edit only the sections you want to change. Empty fields are omitted; other sections retain their content.' }));
         const snippet = value => value?.trim() ? value.trim().slice(0, 48) : 'Empty';
         const filled = () => summarize(group, `${promptSections.filter(([key]) => sections[key]?.trim()).length} / ${promptSections.length} filled`);
-        const enhanceField = (input, key, label) => space ? el('div', { class: 'mm-prompt-field' }, input,
+        const enhanceField = (input, key, label) => space ? el('div', { class: 'amm-prompt-field' }, input,
             iconButton(`Enhance ${label}`, 'sparkles', () => this.action(() => this.run('enhance', space, null, key)),
                 { 'data-run': 'enhance', title: 'Enhance this field with the global text generator' })) : input;
         const task = combo('TASK', ['TEXT_TO_IMAGE', 'IMAGE_TO_IMAGE', 'IMAGE_EDIT', 'REFINE', 'REDESIGN'], sections.task, value => { sections.task = value; update(); });
@@ -430,37 +430,37 @@ export class Studio {
         task.querySelector('input').addEventListener('input', e => { sections.task = e.target.value; update(); });
         group.append(task);
         const inputs = {};
-        if (styleSource(cfg.engine)) group.append(el('div', { class: 'mm-row' }, iconButton(styleSource(cfg.engine) === 'animadex' ? 'Browse Animadex styles and characters' : 'Browse Stylebook styles', 'image',
+        if (styleSource(cfg.engine)) group.append(el('div', { class: 'amm-row' }, iconButton(styleSource(cfg.engine) === 'animadex' ? 'Browse Animadex styles and characters' : 'Browse Stylebook styles', 'image',
             () => openStylePicker(this, cfg.engine, (key, update) => {
                 const input = inputs[key]; input.value = update(input.value);
                 input.dispatchEvent(new Event('input')); input.dispatchEvent(new Event('change')); input.closest('details').open = true;
             }), {}, true)));
         for (const [key, tag] of promptSections) {
-            const status = el('small', { text: snippet(sections[key]), class: sections[key]?.trim() ? 'mm-filled' : '' });
+            const status = el('small', { text: snippet(sections[key]), class: sections[key]?.trim() ? 'amm-filled' : '' });
             const input = el('textarea', { value: sections[key] || '', rows: 3, 'aria-label': tag, oninput: e => {
                 sections[key] = e.target.value;
-                if (status.classList.contains('mm-filled') !== !!e.target.value.trim()) { status.textContent = snippet(e.target.value); status.classList.toggle('mm-filled'); filled(); }
+                if (status.classList.contains('amm-filled') !== !!e.target.value.trim()) { status.textContent = snippet(e.target.value); status.classList.toggle('amm-filled'); filled(); }
                 update();
             }, onchange: e => { status.textContent = snippet(e.target.value); } });
             inputs[key] = input;
-            group.append(el('details', { class: 'mm-prompt-section' }, el('summary', {}, el('span', { text: tag }), status), enhanceField(input, key, tag)));
+            group.append(el('details', { class: 'amm-prompt-section' }, el('summary', {}, el('span', { text: tag }), status), enhanceField(input, key, tag)));
         }
-        const free = el('textarea', { class: 'mm-prompt', value: cfg.prompt || '', placeholder: editing ? 'Additional instructions or a complete editing prompt…' : 'Additional text or any prompt outside this format…', oninput: e => { cfg.prompt = e.target.value; update(); } });
+        const free = el('textarea', { class: 'amm-prompt', value: cfg.prompt || '', placeholder: editing ? 'Additional instructions or a complete editing prompt…' : 'Additional text or any prompt outside this format…', oninput: e => { cfg.prompt = e.target.value; update(); } });
         group.querySelector('summary').append(iconButton('Clear prompt', 'clear', e => {
             e.preventDefault(); e.stopPropagation();
             for (const key of Object.keys(sections)) delete sections[key];
             cfg.prompt = ''; free.value = ''; preview.value = '';
             for (const input of group.querySelectorAll('input, textarea')) input.value = '';
-            for (const status of group.querySelectorAll('.mm-prompt-section summary small')) { status.textContent = 'Empty'; status.classList.remove('mm-filled'); }
+            for (const status of group.querySelectorAll('.amm-prompt-section summary small')) { status.textContent = 'Empty'; status.classList.remove('amm-filled'); }
             clearTimeout(previewTimer); filled(); changed();
-        }, { class: 'mm-icon-button mm-prompt-clear', title: 'Clear TASK, all sections, and the free prompt' }));
+        }, { class: 'amm-icon-button amm-prompt-clear', title: 'Clear TASK, all sections, and the free prompt' }));
         filled(); host.append(group, field('Free prompt', enhanceField(free, 'free', 'free prompt')), combined);
     }
     downloadImageAction(asset) {
         return iconButton('Download image', 'download', () => {
             this.closeAssetMenu();
             el('a', { href: assetUrl(this.project.id, asset.id) + '?original=1', download: '' }).click();
-        }, { role: 'menuitem', class: 'mm-menu-item', disabled: !!asset.missing }, true);
+        }, { role: 'menuitem', class: 'amm-menu-item', disabled: !!asset.missing }, true);
     }
     referencePromptAction(asset, space) {
         const available = !!referencePrompt(asset);
@@ -470,13 +470,13 @@ export class Studio {
             if (!saved) return;
             Object.assign(this.config(space), saved);
             this.presetChanged(space); this.rebuild(space);
-        }, { role: 'menuitem', class: 'mm-menu-item', disabled: !available,
+        }, { role: 'menuitem', class: 'amm-menu-item', disabled: !available,
             title: available ? 'Fill the sections and free prompt for this operation' : 'This image has no recoverable prompt' }, true);
     }
     describeReferenceAction(asset, space) {
         return iconButton('Create prompt from image', 'sparkles', () => {
             this.closeAssetMenu(); this.action(() => this.run('describe', space, asset.id));
-        }, { role: 'menuitem', class: 'mm-menu-item', 'data-run': 'describe', 'data-text-source': asset.id,
+        }, { role: 'menuitem', class: 'amm-menu-item', 'data-run': 'describe', 'data-text-source': asset.id,
             disabled: asset.deleted || asset.missing || !this.textGeneratorAvailable(),
             title: 'Analyze this reference with the global CLIP and create a structured prompt' }, true);
     }
@@ -486,7 +486,7 @@ export class Studio {
             && options(this.defs, 'CLIPLoader', 'type').includes(config.encoder_type);
     }
     resolutionControls(host, cfg, space, editing = false) {
-        const box = host.querySelector('.mm-size-controls');
+        const box = host.querySelector('.amm-size-controls');
         const latent = cfg.engine === 'krea_edit' && cfg.references.includes(cfg.latent_reference) ? cfg.latent_reference : null;
         const id = editing ? this.state(space).source : ['moss', 'anima'].includes(cfg.engine) ? null : latent || cfg.references[0];
         const source = this.project.assets.find(a => a.id === id);
@@ -500,7 +500,7 @@ export class Studio {
     references(host, space, cfg, slot = host) {
         if (['moss', 'anima'].includes(cfg.engine)) { slot.append(el('small', { text: 'Text-to-image workflow. Reuse a saved reference prompt from its image menu to guide generation.' })); return; }
         const box = el('details', { open: true }, el('summary', { text: 'Connected visual references' }));
-        const list = el('div', { class: 'mm-reference-strip' });
+        const list = el('div', { class: 'amm-reference-strip' });
         const latent = cfg.engine === 'krea_edit' ? el('select', { 'aria-label': 'Initial latent image', onchange: e => {
             cfg.latent_reference = e.target.value; this.presetChanged(space); refresh();
         } }) : null;
@@ -509,7 +509,7 @@ export class Studio {
                 if (cfg.latent_reference && !cfg.references.includes(cfg.latent_reference)) { cfg.latent_reference = ''; this.saveSoon(); }
                 latent.replaceChildren(el('option', { value: '', text: 'None · empty latent' }), ...cfg.references.map((id, i) => el('option', { value: id, text: `${i + 1}. ${this.project.assets.find(a => a.id === id)?.name || 'Missing'}` })));
                 latent.value = cfg.latent_reference || '';
-                host.querySelector('.mm-edit-denoise').hidden = !cfg.latent_reference;
+                host.querySelector('.amm-edit-denoise').hidden = !cfg.latent_reference;
             }
             this.resolutionControls(host, cfg, space);
             list.replaceChildren(...cfg.references.map((id, i) => {
@@ -518,12 +518,12 @@ export class Studio {
                     el('small', { text: `${i + 1}. ${a?.name || 'Missing'}${a?.deleted ? ' · Trash' : a?.missing ? ' · Missing file' : ''}` }),
                     a?.deleted ? iconButton('Restore reference', 'restore', () => this.action(async () => {
                         await this.patchAssets({ [id]: { deleted: false } }); this.galleryRefresh.forEach(render => render());
-                    })) : null, el('div', { class: 'mm-row' },
+                    })) : null, el('div', { class: 'amm-row' },
                         iconButton('Move reference up', 'left', () => { [cfg.references[i - 1], cfg.references[i]] = [id, cfg.references[i - 1]]; this.presetChanged(space); refresh(); }, { disabled: !i }),
                         iconButton('Move reference down', 'right', () => { [cfg.references[i + 1], cfg.references[i]] = [id, cfg.references[i + 1]]; this.presetChanged(space); refresh(); }, { disabled: i === cfg.references.length - 1 }),
                         iconButton('Remove', 'clear', () => { cfg.references.splice(i, 1); this.presetChanged(space); refresh(); })));
                 if (a) {
-                    const actions = el('div', { id: `mm-reference-menu-${space}-${id}`, class: 'mm-asset-menu', popover: 'manual', role: 'menu', 'aria-label': `Actions for ${a.name}` }, this.downloadImageAction(a), this.referencePromptAction(a, space));
+                    const actions = el('div', { id: `amm-reference-menu-${space}-${id}`, class: 'amm-asset-menu', popover: 'manual', role: 'menu', 'aria-label': `Actions for ${a.name}` }, this.downloadImageAction(a), this.referencePromptAction(a, space));
                     if (a.kind === 'references') actions.append(this.describeReferenceAction(a, space));
                     this.assetContextMenu(card, actions);
                 }
@@ -532,7 +532,7 @@ export class Studio {
         }; refresh(); this.referenceRefresh.set(space, refresh);
         box.append(list, latent ? field('Initial latent image', latent, 'Select one connected image to enable Denoise in Sampling.') : '', iconButton('Choose references', 'link', () => {
             const items = this.project.assets.filter(a => !a.deleted && !a.missing);
-            const picker = el('div', { class: 'mm-asset-picker' });
+            const picker = el('div', { class: 'amm-asset-picker' });
             const update = () => { for (const b of picker.children) b.disabled = cfg.engine !== 'qwen' && cfg.references.length >= 4 && !cfg.references.includes(b.dataset.assetId); };
             picker.append(...items.map(a => this.assetPickerItem(a, () => {
                 if (!cfg.references.includes(a.id) && (cfg.engine === 'qwen' || cfg.references.length < 4)) { cfg.references.push(a.id); this.presetChanged(space); }
@@ -549,20 +549,20 @@ export class Studio {
         if (state.controlWidth) controls.style.width = `${state.controlWidth}px`;
         const toggleControls = iconButton('Show or hide controls', 'sidebar', () => {
             controls.hidden = !controls.hidden; state.controlsCollapsed = controls.hidden; toggleControls.setAttribute('aria-pressed', String(!controls.hidden)); this.saveSoon();
-        }, { class: 'mm-icon-button mm-controls-toggle', 'aria-pressed': String(!controls.hidden) });
-        view.prepend(el('div', { class: 'mm-rail' }, toggleControls)); controls.after(resizer(controls, 'Resize controls'));
+        }, { class: 'amm-icon-button amm-controls-toggle', 'aria-pressed': String(!controls.hidden) });
+        view.prepend(el('div', { class: 'amm-rail' }, toggleControls)); controls.after(resizer(controls, 'Resize controls'));
         const observer = new ResizeObserver(entries => { const width = Math.round(controls.getBoundingClientRect().width); if (width > 100 && state.controlWidth !== width) { state.controlWidth = width; this.saveSoon(); } });
         observer.observe(controls); this.observers.push(observer);
     }
     generateView(view, space) {
-        const controls = el('aside', { class: 'mm-controls' }, el('h2', { text: space === 'references' ? 'Create references' : 'Generate panels' }));
+        const controls = el('aside', { class: 'amm-controls' }, el('h2', { text: space === 'references' ? 'Create references' : 'Generate panels' }));
         this.engineSelect(controls, space);
         const cfg = this.config(space); cfg.engine = this.state(space).engine;
         this.presets(controls, space, cfg, space === 'references' ? referencePresets : {});
         const slot = el('div'); controls.append(slot);
         this.essentials(controls, cfg, space); this.references(controls, space, cfg, slot);
         this.runBar(controls, cfg, space, cfg.engine === 'krea_edit' ? space === 'references' ? 'Edit reference' : 'Edit panel' : space === 'references' ? 'Generate reference' : 'Generate panel');
-        const gallery = el('section', { class: 'mm-gallery-area' }); view.append(controls, gallery); this.gallery(gallery, space === 'references' ? 'references' : 'panels', space); this.controlLayout(view, controls, space);
+        const gallery = el('section', { class: 'amm-gallery-area' }); view.append(controls, gallery); this.gallery(gallery, space === 'references' ? 'references' : 'panels', space); this.controlLayout(view, controls, space);
     }
     sourcePicker(host, space, kind, onchange) {
         const label = kind === 'pages' ? 'Original page' : kind === 'panels' ? 'Original panel' : 'Original image';
@@ -571,29 +571,29 @@ export class Studio {
         select.value = state.source; host.append(field(label, select));
     }
     refine(view) {
-        const space = 'refine', controls = el('aside', { class: 'mm-controls' }), preview = el('section', { class: 'mm-preview-area' });
+        const space = 'refine', controls = el('aside', { class: 'amm-controls' }), preview = el('section', { class: 'amm-preview-area' });
         const cfg = this.config(space); cfg.engine = this.state(space).engine;
         controls.append(el('h2', { text: cfg.engine === 'krea' ? 'Krea2 · img2img' : 'Qwen · instruction editing' }), el('small', { text: 'Refine references, panels, or pages. Results are saved as new versions in the original category.' }));
         this.engineSelect(controls, space); this.sourcePicker(controls, space, null, () => this.rebuild(space)); this.presets(controls, space, cfg, refinementPresets); this.essentials(controls, cfg, space, true);
         this.runBar(controls, cfg, space, 'Refine image');
         view.append(controls, preview); this.controlLayout(view, controls, space); this.comparison(preview, space);
-        const gallery = el('div', { class: 'mm-result-gallery' }); preview.append(gallery);
+        const gallery = el('div', { class: 'amm-result-gallery' }); preview.append(gallery);
         const source = this.project.assets.find(a => a.id === this.state(space).source);
         this.gallery(gallery, source?.kind || 'panels', space, true);
     }
     comparison(host, space) {
-        host.querySelector('.mm-comparison')?.remove();
+        host.querySelector('.amm-comparison')?.remove();
         const state = this.state(space), source = this.project.assets.find(a => a.id === state.source), result = this.project.assets.find(a => a.id === state.result);
-        const shell = el('div', { class: 'mm-comparison' });
-        if (!source) shell.append(el('div', { class: 'mm-empty', text: 'Select an original image from your project.' }));
+        const shell = el('div', { class: 'amm-comparison' });
+        if (!source) shell.append(el('div', { class: 'amm-empty', text: 'Select an original image from your project.' }));
         else {
-            const images = el('div', { class: 'mm-compare-images' }, el('figure', {}, el('figcaption', { text: 'Original' }), el('img', { src: assetUrl(this.project.id, source.id), alt: source.name })));
+            const images = el('div', { class: 'amm-compare-images' }, el('figure', {}, el('figcaption', { text: 'Original' }), el('img', { src: assetUrl(this.project.id, source.id), alt: source.name })));
             if (result) images.append(el('figure', {}, el('figcaption', { text: 'Result' }), el('img', { src: assetUrl(this.project.id, result.id), alt: result.name })));
             shell.append(images);
             if (result) {
-                const range = el('input', { type: 'range', min: 0, max: 100, value: 50, 'aria-label': 'Before and after comparison', oninput: e => sliding.style.setProperty('--mm-split', `${e.target.value}%`) });
-                const sliding = el('div', { class: 'mm-sliding', hidden: true }, el('img', { src: assetUrl(this.project.id, source.id), alt: 'Before' }),
-                    el('img', { src: assetUrl(this.project.id, result.id), alt: 'After', class: 'mm-compare-overlay' }), range);
+                const range = el('input', { type: 'range', min: 0, max: 100, value: 50, 'aria-label': 'Before and after comparison', oninput: e => sliding.style.setProperty('--amm-split', `${e.target.value}%`) });
+                const sliding = el('div', { class: 'amm-sliding', hidden: true }, el('img', { src: assetUrl(this.project.id, source.id), alt: 'Before' }),
+                    el('img', { src: assetUrl(this.project.id, result.id), alt: 'After', class: 'amm-compare-overlay' }), range);
                 shell.prepend(segmented('Comparison view', [['split', 'Side by side'], ['slider', 'Before / after slider']], 'split', value => { sliding.hidden = value !== 'slider'; images.hidden = !sliding.hidden; }), sliding);
             }
         }
@@ -601,7 +601,7 @@ export class Studio {
     }
     finish(view) {
         const space = 'finish', cfg = this.config(space, 'qwen'); cfg.engine = 'qwen'; this.state(space).engine = 'qwen';
-        const controls = el('aside', { class: 'mm-controls' }), preview = el('section', { class: 'mm-preview-area' }); controls.append(el('h2', { text: 'Finishing · Qwen' }));
+        const controls = el('aside', { class: 'amm-controls' }), preview = el('section', { class: 'amm-preview-area' }); controls.append(el('h2', { text: 'Finishing · Qwen' }));
         this.sourcePicker(controls, space, 'pages', () => { this.resolutionControls(controls, cfg, space, true); this.comparison(preview, space); });
         controls.append(segmented('Operation', [['refine', 'Refine · keep composition'], ['redesign', 'Redesign composition']], cfg.finish_mode || 'refine',
             value => { cfg.finish_mode = value; analysisInput.value = analysisInstruction(cfg); this.saveSoon(); }));
@@ -615,11 +615,11 @@ export class Studio {
             button('Analyze and propose instruction', () => this.action(() => this.run('analysis')), { 'data-run': 'analysis' }), el('small', { text: 'The proposal appears below for review. Analysis does not start finishing.' }));
         controls.append(analyze); this.presets(controls, space, cfg); this.essentials(controls, cfg, space, true);
         this.runBar(controls, cfg, space, 'Run finishing');
-        view.append(controls, preview); this.controlLayout(view, controls, space); this.comparison(preview, space); const gallery = el('div', { class: 'mm-result-gallery' }); preview.append(gallery); this.gallery(gallery, 'pages', space, true);
+        view.append(controls, preview); this.controlLayout(view, controls, space); this.comparison(preview, space); const gallery = el('div', { class: 'amm-result-gallery' }); preview.append(gallery); this.gallery(gallery, 'pages', space, true);
     }
     assetContextMenu(card, actions) {
         actions.tabIndex = -1;
-        const trigger = iconButton('Image actions', 'more', e => openMenu(e), { class: 'mm-icon-button mm-asset-trigger', 'aria-haspopup': 'menu', 'aria-controls': actions.id, 'aria-expanded': 'false' });
+        const trigger = iconButton('Image actions', 'more', e => openMenu(e), { class: 'amm-icon-button amm-asset-trigger', 'aria-haspopup': 'menu', 'aria-controls': actions.id, 'aria-expanded': 'false' });
         const openMenu = e => {
             e.preventDefault();
             if (actions.matches(':popover-open')) { this.closeAssetMenu(); return; }
@@ -644,9 +644,9 @@ export class Studio {
         card.append(trigger, actions);
     }
     gallery(host, kind, space, compact = false) {
-        const state = this.state(space); const bar = el('div', { class: 'mm-gallery-toolbar' }), grid = el('div', { class: 'mm-gallery-grid' }), pager = el('div', { class: 'mm-row mm-pager' });
-        const pending = el('div', { class: 'mm-gallery-grid mm-pending-grid' }), selection = el('div', { class: 'mm-selection-bar', role: 'toolbar', 'aria-label': 'Selection actions' });
-        const setThumb = () => host.style.setProperty('--mm-thumb', `${state.thumb || 185}px`); setThumb();
+        const state = this.state(space); const bar = el('div', { class: 'amm-gallery-toolbar' }), grid = el('div', { class: 'amm-gallery-grid' }), pager = el('div', { class: 'amm-row amm-pager' });
+        const pending = el('div', { class: 'amm-gallery-grid amm-pending-grid' }), selection = el('div', { class: 'amm-selection-bar', role: 'toolbar', 'aria-label': 'Selection actions' });
+        const setThumb = () => host.style.setProperty('--amm-thumb', `${state.thumb || 185}px`); setThumb();
         let visible = [];
         const render = () => {
             let assets = this.project.assets.filter(a => a.kind === kind && (state.filter === 'trash' ? a.deleted : !a.deleted));
@@ -656,17 +656,17 @@ export class Studio {
             if (state.filter === 'missing') assets = assets.filter(a => a.missing);
             assets.sort(state.sort === 'name' ? (a, b) => a.name.localeCompare(b.name) : state.sort === 'oldest' ? (a, b) => a.created - b.created : state.sort === 'order' ? (a, b) => (a.order || 0) - (b.order || 0) : (a, b) => b.created - a.created);
             const totalPages = Math.max(1, Math.ceil(assets.length / 48)); state.page = Math.min(state.page || 0, totalPages - 1); visible = assets;
-            grid.classList.toggle('mm-selecting', state.selection.length > 0);
+            grid.classList.toggle('amm-selecting', state.selection.length > 0);
             grid.replaceChildren(...assets.slice(state.page * 48, (state.page + 1) * 48).map(a => {
                 const checkbox = el('input', { type: 'checkbox', checked: state.selection.includes(a.id), 'aria-label': `Select ${a.name}`, onchange: e => {
                     state.selection = e.target.checked ? [...new Set([...state.selection, a.id])] : state.selection.filter(id => id !== a.id); this.saveSoon(); render();
                 } });
                 const image = el('img', { src: assetUrl(this.project.id, a.id, true), alt: a.name, loading: 'lazy', decoding: 'async', draggable: false });
-                const preview = button('', () => this.preview(a, visible), { 'aria-label': `Preview ${a.name}` }); preview.className = 'mm-thumbnail'; preview.append(image);
-                const card = el('article', { class: `mm-asset ${state.selection.includes(a.id) ? 'mm-selected' : ''}`, draggable: a.kind === 'panels', ondragstart: e => { e.dataTransfer.setData('application/x-manga-asset', a.id); e.dataTransfer.effectAllowed = 'copy'; } },
+                const preview = button('', () => this.preview(a, visible), { 'aria-label': `Preview ${a.name}` }); preview.className = 'amm-thumbnail'; preview.append(image);
+                const card = el('article', { class: `amm-asset ${state.selection.includes(a.id) ? 'amm-selected' : ''}`, draggable: a.kind === 'panels', ondragstart: e => { e.dataTransfer.setData('application/x-manga-asset', a.id); e.dataTransfer.effectAllowed = 'copy'; } },
                     checkbox, preview, el('strong', { text: a.name, title: a.name }), el('small', { text: `${sizeLabel(a)} · ${a.parent ? 'Version' : 'Original'} ${a.version}${a.missing ? ' · Missing file' : ''}` }));
-                const actions = el('div', { id: `mm-menu-${space}-${a.id}`, class: 'mm-asset-menu', popover: 'manual', role: 'menu', 'aria-label': `Actions for ${a.name}` });
-                const addAction = (label, name, action, danger = false) => actions.append(iconButton(label, name, () => { this.closeAssetMenu(); action(); }, { role: 'menuitem', class: `mm-menu-item${danger ? ' mm-danger' : ''}` }, true));
+                const actions = el('div', { id: `amm-menu-${space}-${a.id}`, class: 'amm-asset-menu', popover: 'manual', role: 'menu', 'aria-label': `Actions for ${a.name}` });
+                const addAction = (label, name, action, danger = false) => actions.append(iconButton(label, name, () => { this.closeAssetMenu(); action(); }, { role: 'menuitem', class: `amm-menu-item${danger ? ' amm-danger' : ''}` }, true));
                 actions.append(this.downloadImageAction(a));
                 addAction('Rename', 'pencil', () => this.ask('Image name', a.name, async name => { await this.patchAssets({ [a.id]: { name } }); render(); }));
                 addAction('Settings', 'info', () => this.assetSettings(a));
@@ -705,7 +705,7 @@ export class Studio {
                 }, !a.deleted);
                 card.dataset.assetId = a.id; this.assetContextMenu(card, actions); return card;
             }));
-            if (!assets.length) grid.append(el('div', { class: 'mm-empty', text: 'This gallery is empty. Import images or generate your first result.' }));
+            if (!assets.length) grid.append(el('div', { class: 'amm-empty', text: 'This gallery is empty. Import images or generate your first result.' }));
             pager.replaceChildren(iconButton('Previous', 'left', () => { state.page--; render(); this.saveSoon(); }, { disabled: state.page === 0 }), el('span', { text: `${state.page + 1} / ${totalPages} · ${assets.length} images` }), iconButton('Next', 'right', () => { state.page++; render(); this.saveSoon(); }, { disabled: state.page >= totalPages - 1 }));
             selection.hidden = !state.selection.length; selection.firstChild.textContent = `${state.selection.length} selected`;
         };
@@ -717,7 +717,7 @@ export class Studio {
         bar.append(sort, iconButton('Select visible', 'check', () => { state.selection = [...grid.querySelectorAll('article')].map(card => card.dataset.assetId); render(); this.saveSoon(); }),
             iconButton('Collapse gallery', 'collapse', () => { grid.hidden = !grid.hidden; pager.hidden = grid.hidden; state.collapsed = grid.hidden; this.saveSoon(); }),
             segmented('Filter', Object.entries({ all: 'All', originals: 'Originals', versions: 'Versions', missing: 'Missing', trash: 'Trash' }), state.filter, value => { state.filter = value; state.page = 0; render(); this.saveSoon(); }),
-            el('input', { type: 'range', class: 'mm-thumb-size', min: 110, max: 340, step: 5, value: state.thumb || 185, 'aria-label': 'Thumbnail size', title: 'Thumbnail size',
+            el('input', { type: 'range', class: 'amm-thumb-size', min: 110, max: 340, step: 5, value: state.thumb || 185, 'aria-label': 'Thumbnail size', title: 'Thumbnail size',
                 oninput: e => { state.thumb = Number(e.target.value); setThumb(); }, onchange: () => this.saveSoon() }));
         selection.append(el('strong'), iconButton('Clear selection', 'clear', () => { state.selection = []; render(); this.saveSoon(); }),
             iconButton('Remove selected', 'trash', () => this.confirm('Remove selected images', async () => { await this.patchAssets(Object.fromEntries(state.selection.map(id => [id, { deleted: true }]))); state.selection = []; render(); })),
@@ -727,7 +727,7 @@ export class Studio {
         grid.hidden = !!state.collapsed; pager.hidden = grid.hidden;
         const renderPending = () => pending.replaceChildren(...this.project.jobs.filter(j => j.operation === space && j.kind === kind && ['registered', 'queued', 'running'].includes(j.state)).map(j => {
             const progress = this.progress.get(j.id);
-            return el('div', { class: 'mm-pending-card', role: 'status', 'aria-label': `${j.name} · ${j.state}` }, el('div', { class: 'mm-pending-preview' }, el('span', { text: j.state === 'running' ? 'Generating…' : 'Queued' })),
+            return el('div', { class: 'amm-pending-card', role: 'status', 'aria-label': `${j.name} · ${j.state}` }, el('div', { class: 'amm-pending-preview' }, el('span', { text: j.state === 'running' ? 'Generating…' : 'Queued' })),
                 el('progress', { max: progress?.max || 1, ...(progress ? { value: progress.value } : {}) }), el('small', { text: `${engines[j.engine] || j.engine}${progress ? ` · ${progress.value} / ${progress.max}` : ''}` }));
         }));
         host.append(bar, selection, pending, grid, pager); render(); renderPending(); this.galleryRefresh.set(space, render); this.pendingRefresh.set(space, renderPending);
@@ -749,9 +749,9 @@ export class Studio {
         let index = Math.max(0, assets.indexOf(asset)); const project = this.project.id;
         const image = el('img'), info = el('p'), link = el('a', { text: 'Download original file', download: '' });
         const step = offset => show(index + offset), single = assets.length < 2;
-        const dialog = this.modal(asset.name, el('div', { class: 'mm-lightbox' }, el('div', { class: 'mm-lightbox-stage' },
+        const dialog = this.modal(asset.name, el('div', { class: 'amm-lightbox' }, el('div', { class: 'amm-lightbox-stage' },
             iconButton('Previous image', 'left', () => step(-1), { hidden: single }), image, iconButton('Next image', 'right', () => step(1), { hidden: single })), info, link));
-        dialog.classList.add('mm-lightbox-dialog');
+        dialog.classList.add('amm-lightbox-dialog');
         dialog.addEventListener('keydown', e => { if (!single && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) { e.preventDefault(); step(e.key === 'ArrowLeft' ? -1 : 1); } });
         const show = next => {
             index = (next + assets.length) % assets.length; const a = assets[index];
@@ -775,12 +775,12 @@ export class Studio {
     async design(view) {
         const state = this.state('design');
         state.pages ||= [newPage()]; state.currentPage ||= state.pages[0].id;
-        const group = label => el('div', { class: 'mm-toolbar-group', role: 'group', 'aria-label': label });
-        const controls = el('div', { class: 'mm-design-top' }), rail = el('aside', { class: 'mm-design-gallery' }), editorHost = el('section', { class: 'mm-editor' });
+        const group = label => el('div', { class: 'amm-toolbar-group', role: 'group', 'aria-label': label });
+        const controls = el('div', { class: 'amm-design-top' }), rail = el('aside', { class: 'amm-design-gallery' }), editorHost = el('section', { class: 'amm-editor' });
         const pages = group('Page actions'), layouts = group('Preset layouts'), files = group('Layout files');
-        state.galleryVisible ??= window.innerWidth > 650; rail.hidden = !state.galleryVisible; rail.classList.toggle('mm-gallery-open', state.galleryVisible);
+        state.galleryVisible ??= window.innerWidth > 650; rail.hidden = !state.galleryVisible; rail.classList.toggle('amm-gallery-open', state.galleryVisible);
         const galleryToggle = iconButton('Gallery', 'image', () => {
-            state.galleryVisible = !state.galleryVisible; rail.hidden = !state.galleryVisible; rail.classList.toggle('mm-gallery-open', state.galleryVisible);
+            state.galleryVisible = !state.galleryVisible; rail.hidden = !state.galleryVisible; rail.classList.toggle('amm-gallery-open', state.galleryVisible);
             galleryToggle.setAttribute('aria-pressed', String(state.galleryVisible)); this.saveSoon();
         }, { 'aria-pressed': String(state.galleryVisible) });
         controls.append(galleryToggle);
@@ -802,7 +802,7 @@ export class Studio {
                 const asset = await request(`/projects/${project}/import`, form, 'POST');
                 if (this.project.id === project) { this.project.assets.push(asset); this.state('finish').source = asset.id; this.rebuild('finish'); }
                 this.notify(`Composition saved: ${page.name}`);
-            }), { class: 'mm-primary mm-design-export' }));
+            }), { class: 'amm-primary amm-design-export' }));
         const presets = el('select', { 'aria-label': 'Layout presets', onchange: e => {
             const layout = this.project.layouts[e.target.value]; cloneLayout.disabled = !layout; if (!layout) return;
             this.confirm('Apply layout and replace panels', () => this.editor.applyPreset(layout));
@@ -816,8 +816,8 @@ export class Studio {
             const data = await response.json(); for (const [key, layout] of Object.entries(data)) { this.validateLayout(layout); this.project.layouts[`PanelComposer · ${layout.label || key}`] = clone(layout); }
             this.saveSoon(); fillPresets();
         })));
-        controls.append(pages, layouts, files, files.querySelector('.mm-design-export'));
-        view.append(controls, el('div', { class: 'mm-design-body' }, rail, resizer(rail, 'Resize gallery'), editorHost)); this.gallery(rail, 'panels', 'design');
+        controls.append(pages, layouts, files, files.querySelector('.amm-design-export'));
+        view.append(controls, el('div', { class: 'amm-design-body' }, rail, resizer(rail, 'Resize gallery'), editorHost)); this.gallery(rail, 'panels', 'design');
         this.editor = new PageEditor(this, editorHost, state.pages.find(p => p.id === state.currentPage) || state.pages[0]); this.saveSoon();
     }
     validateLayout(layout) {
@@ -864,7 +864,7 @@ export class Studio {
             const registered = await request(`/projects/${project.id}/jobs`, job, 'POST'); project.jobs.push(registered);
             const response = await api.fetchApi('/prompt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
                 prompt_id: jobId, client_id: api.clientId, prompt: built.graph,
-                extra_data: { manga_maker: { project: project.id, operation, job: jobId } },
+                extra_data: { anima_manga_maker: { project: project.id, operation, job: jobId } },
             }) });
             const result = await response.json();
             if (!response.ok) throw new Error(JSON.stringify(result.node_errors || result.error || result));
@@ -876,7 +876,7 @@ export class Studio {
         } finally { this.busy.delete(key); this.jobs(); }
     }
     textResult(job) {
-        const result = el('textarea', { value: job.text || '', 'aria-label': 'Generator proposal', class: 'mm-prompt-preview' });
+        const result = el('textarea', { value: job.text || '', 'aria-label': 'Generator proposal', class: 'amm-prompt-preview' });
         const error = el('small', { role: 'alert' });
         const dialog = this.modal(job.dialogue_target ? 'Enhance dialogue' : textTasks[job.operation], el('div', {},
             el('p', { text: job.operation === 'enhance' ? `Proposal for ${job.section === 'free' ? 'Free prompt' : job.section}. Only that field will be replaced.` : 'Prompt created from the reference. Review it before applying.' }), result, error),
@@ -899,10 +899,10 @@ export class Studio {
                     Object.assign(cfg, parsed);
                 }
                 this.presetChanged(job.space); this.rebuild(job.space); dialog.close();
-            }, { class: 'mm-primary' }));
+            }, { class: 'amm-primary' }));
     }
     event(name, detail) {
-        if (name === 'manga_maker_error' && detail.project === this.project?.id) this.fail(new Error(detail.error));
+        if (name === 'anima_manga_maker_error' && detail.project === this.project?.id) this.fail(new Error(detail.error));
         if (name === 'execution_start') this.executing = detail.prompt_id;
         if (name === 'progress') { const id = detail.prompt_id || this.executing; if (id) this.progress.set(id, { value: detail.value, max: detail.max }); }
         if (['execution_error', 'execution_interrupted', 'execution_success'].includes(name)) this.poll();
@@ -936,7 +936,7 @@ export class Studio {
             if (added) {
                 this.referenceRefresh.forEach(refresh => refresh());
                 this.galleryRefresh.forEach(refresh => refresh());
-                for (const space of ['refine', 'finish']) { const view = this.views.get(space); if (view) this.comparison(view.querySelector('.mm-preview-area'), space); }
+                for (const space of ['refine', 'finish']) { const view = this.views.get(space); if (view) this.comparison(view.querySelector('.amm-preview-area'), space); }
             }
             this.jobs();
         } catch (e) { this.fail(e); } finally { this.polling = false; }
@@ -961,7 +961,7 @@ export class Studio {
         const active = relevant.filter(j => ['registered', 'queued', 'running'].includes(j.state));
         const labels = { registered: 'Preparing', queued: 'Queued', running: 'Running', complete: 'Completed', error: 'Error', cancelled: 'Cancelled' };
         this.status.replaceChildren(el('span', { text: `${this.project.name} · ${spaces[this.active]} · ${active.length} active jobs` }),
-            ...[...active, ...relevant.filter(j => !active.includes(j)).slice(-4)].map(j => el('div', { class: `mm-job mm-job-${j.state}`, role: 'group', 'aria-label': j.name }, button(`${j.cancel_requested && active.includes(j) ? 'Cancelling' : labels[j.state]} · ${j.engine}${j.state === 'running' && this.progress.has(j.id) ? ` · ${this.progress.get(j.id).value} / ${this.progress.get(j.id).max}` : ''}`, () => {
+            ...[...active, ...relevant.filter(j => !active.includes(j)).slice(-4)].map(j => el('div', { class: `amm-job amm-job-${j.state}`, role: 'group', 'aria-label': j.name }, button(`${j.cancel_requested && active.includes(j) ? 'Cancelling' : labels[j.state]} · ${j.engine}${j.state === 'running' && this.progress.has(j.id) ? ` · ${this.progress.get(j.id).value} / ${this.progress.get(j.id).max}` : ''}`, () => {
                 if (j.operation in textTasks && j.state === 'complete') { this.textResult(j); return; }
                 const details = el('div', {}, el('p', { text: `${j.name} · ${j.id}` }), el('pre', { text: j.error ? JSON.stringify(j.error, null, 2) : j.text || JSON.stringify(j.settings, null, 2) }));
                 if (['queued', 'running'].includes(j.state)) details.append(button('Cancel generation', () => this.action(() => this.cancelJob(j, this.project.id)), { disabled: !!j.cancel_requested }));
@@ -977,7 +977,7 @@ export class Studio {
                 : run in textTasks && this.project.jobs.some(j => j.operation === run && ['registered', 'queued', 'running'].includes(j.state)) ? 'A text generation is already running.'
                 : run === 'describe' && !this.project.assets.some(a => a.id === b.dataset.textSource && !a.deleted && !a.missing) ? 'The source image is unavailable.' : '';
             b.disabled = !!reason;
-            const hint = b.closest('.mm-run-bar')?.querySelector('.mm-run-hint'); if (hint) hint.textContent = reason;
+            const hint = b.closest('.amm-run-bar')?.querySelector('.amm-run-hint'); if (hint) hint.textContent = reason;
         }
         this.pendingRefresh.forEach(render => render());
     }

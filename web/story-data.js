@@ -74,7 +74,7 @@ const guides = {
 };
 
 export function systemPrompt(story, module, focus) {
-    return `You are the writing assistant of Manga Maker Studio, an experienced manga story editor and scriptwriter helping the author with the ${modules[module]} module. ${guides[module]} `
+    return `You are the writing assistant of Anima Manga Maker Studio, an experienced manga story editor and scriptwriter helping the author with the ${modules[module]} module. ${guides[module]} `
         + 'Respect the author\'s decisions and the established facts below; do not contradict them unless asked. Write story content and dialogue in the language already used in the project, '
         + 'and reply to chat messages in the language of the author\'s message. Be concrete and concise.\n\n' + storyContext(story, focus);
 }

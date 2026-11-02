@@ -13,31 +13,31 @@ const state = { animadex: { tab: 'artist', query: '' }, stylebook: { tab: 'anime
 let stylebook;
 
 const onlinePreviews = () => { try { return localStorage.getItem('anima_online') === 'true'; } catch { return false; } };
-const previewUrl = (source, path) => api.apiURL(`/manga-maker/styles/preview/${source}/${path.split('/').map(encodeURIComponent).join('/')}`);
+const previewUrl = (source, path) => api.apiURL(`/anima-manga-maker/styles/preview/${source}/${path.split('/').map(encodeURIComponent).join('/')}`);
 // Adds without repeating an entry already in the section; `separator` matches tag lists or prose.
 const merge = (current, text, separator) => !current.trim() || state.replace ? text : current.includes(text) ? current : `${current.trim().replace(/[,\s]+$/, '')}${separator}${text}`;
 
 function animadexCard(item, tab, pick) {
     const src = item.local ? previewUrl('animadex', item.local) : onlinePreviews() ? item.thumb : '';
-    return button('', () => pick(item), { class: 'mm-style-card', title: tab === 'artist' ? `@${item.tag}` : [item.tag, ...item.tags].join(', ') },
-        src ? el('img', { src, alt: '', loading: 'lazy' }) : el('span', { class: 'mm-style-empty', text: tab === 'artist' ? '@' : item.name.slice(0, 1) }),
+    return button('', () => pick(item), { class: 'amm-style-card', title: tab === 'artist' ? `@${item.tag}` : [item.tag, ...item.tags].join(', ') },
+        src ? el('img', { src, alt: '', loading: 'lazy' }) : el('span', { class: 'amm-style-empty', text: tab === 'artist' ? '@' : item.name.slice(0, 1) }),
         el('strong', { text: item.name }), el('small', { text: [item.copyright, `${Number(item.works).toLocaleString()} works`].filter(Boolean).join(' · ') }));
 }
 
 function stylebookCard(style, pick) {
     const { preview } = style, scale = tile / (preview?.w || 256);
-    const image = preview ? el('span', { class: 'mm-style-tile', style: `background-image:url("${previewUrl('stylebook', preview.atlas)}");background-size:${preview.size[0] * scale}px ${preview.size[1] * scale}px;background-position:${-preview.x * scale}px ${-preview.y * scale}px` })
-        : el('span', { class: 'mm-style-empty', text: style.label.slice(0, 1) });
-    return button('', () => pick(style), { class: 'mm-style-card', title: style.prose || style.tags }, image, el('strong', { text: style.label }), el('small', { text: style.aliases.slice(0, 3).join(' · ') }));
+    const image = preview ? el('span', { class: 'amm-style-tile', style: `background-image:url("${previewUrl('stylebook', preview.atlas)}");background-size:${preview.size[0] * scale}px ${preview.size[1] * scale}px;background-position:${-preview.x * scale}px ${-preview.y * scale}px` })
+        : el('span', { class: 'amm-style-empty', text: style.label.slice(0, 1) });
+    return button('', () => pick(style), { class: 'amm-style-card', title: style.prose || style.tags }, image, el('strong', { text: style.label }), el('small', { text: style.aliases.slice(0, 3).join(' · ') }));
 }
 
 // `apply(section, update)` receives the prompt section to change and a function from its current text to the new text.
 export function openStylePicker(studio, engine, apply) {
     const source = styleSource(engine), current = state[source];
-    const grid = el('div', { class: 'mm-style-grid' }), count = el('small', { class: 'mm-style-count' });
+    const grid = el('div', { class: 'amm-style-grid' }), count = el('small', { class: 'amm-style-count' });
     const more = button('Load more', () => studio.action(() => render(true)), { hidden: true });
     const search = el('input', { type: 'search', value: current.query, placeholder: source === 'animadex' ? 'Search artists, characters or series…' : 'Search styles…', 'aria-label': 'Search styles' });
-    const options = el('div', { class: 'mm-style-options' });
+    const options = el('div', { class: 'amm-style-options' });
     let shown = 0, generation = 0, timer;
     const pick = item => {
         if (source === 'stylebook') apply('style', text => merge(text, item.prose || item.tags, ' '));
@@ -69,14 +69,14 @@ export function openStylePicker(studio, engine, apply) {
         } }), 'Shared with Anima Style Explorer; loads previews that are not cached locally from animadex.net.')] : [],
         ...source === 'animadex' && current.tab === 'character' ? [toggle('Include character tags', el('input', { type: 'checkbox', checked: state.characterTags, onchange: e => { state.characterTags = e.target.checked; } }))] : []);
     const tabs = source === 'animadex' ? animadexTabs : Object.keys(stylebookLabels).map(key => [key, stylebookLabels[key]]);
-    const tabBar = el('div', { class: 'mm-style-tabs', role: 'tablist' }, ...tabs.map(([key, label]) => button(label, () => {
+    const tabBar = el('div', { class: 'amm-style-tabs', role: 'tablist' }, ...tabs.map(([key, label]) => button(label, () => {
         current.tab = key; for (const node of tabBar.children) node.setAttribute('aria-selected', String(node.dataset.tab === key));
         renderOptions(); studio.action(() => render());
     }, { role: 'tab', 'data-tab': key, 'aria-selected': String(key === current.tab) })));
     search.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => { current.query = search.value.trim(); studio.action(() => render()); }, 200); });
     renderOptions();
     const dialog = studio.modal(source === 'animadex' ? 'Animadex styles and characters' : 'Stylebook styles',
-        el('div', { class: 'mm-style-picker' }, tabBar, el('div', { class: 'mm-style-toolbar' }, field('Search', search), count), options, grid, more));
-    dialog.classList.add('mm-style-dialog'); search.focus();
+        el('div', { class: 'amm-style-picker' }, tabBar, el('div', { class: 'amm-style-toolbar' }, field('Search', search), count), options, grid, more));
+    dialog.classList.add('amm-style-dialog'); search.focus();
     studio.action(() => render());
 }

@@ -2,7 +2,7 @@
 
 [Documentation](README.md) · [Project README](../README.md)
 
-Manga Maker Studio integrates the following projects and workflows. Credit belongs to their authors and contributors; linked projects and model weights retain their respective licenses.
+Anima Manga Maker Studio integrates the following projects and workflows. Credit belongs to their authors and contributors; linked projects and model weights retain their respective licenses.
 
 | Project / authors | Contribution used by Studio |
 | --- | --- |

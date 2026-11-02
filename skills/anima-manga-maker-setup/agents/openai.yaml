@@ -1,0 +1,4 @@
+interface:
+  display_name: "Anima Manga Maker Studio Setup"
+  short_description: "Install and configure Anima Manga Maker Studio with an agent"
+  default_prompt: "Use $anima-manga-maker-setup to install and configure Anima Manga Maker Studio for the features I need."

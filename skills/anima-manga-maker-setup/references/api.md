@@ -1,6 +1,6 @@
 # Studio API and settings contracts
 
-Read this when inspecting a running server or configuring it through HTTP. All paths are relative to the **confirmed ComfyUI server URL**, including any deployment prefix. Use the deployment's existing authentication through available tools; do not weaken authentication or open a public listener for setup. These are local server calls, not a hosted Manga Maker service.
+Read this when inspecting a running server or configuring it through HTTP. All paths are relative to the **confirmed ComfyUI server URL**, including any deployment prefix. Use the deployment's existing authentication through available tools; do not weaken authentication or open a public listener for setup. These are local server calls, not a hosted Anima Manga Maker service.
 
 ## Inventory and activation
 
@@ -8,10 +8,10 @@ Read this when inspecting a running server or configuring it through HTTP. All p
 | --- | --- |
 | `GET /object_info` | Loaded node schemas and registered model/encoder/VAE/LoRA filenames |
 | `GET /queue` | `queue_running` and `queue_pending`; both must be empty before an idle restart |
-| `GET /manga-maker/settings` | Current global configuration |
-| `GET /manga-maker/models` | Catalog `profiles`, `artifacts`, installed weight paths and download state; does not start downloads |
-| `GET /manga-maker/assistant` | Story assistant: `available` (llama-cpp-python installed), `defaults`, GGUF `models` with compatible `projectors`, scan `errors`, and whether a model is `loaded`. Settings live under `assistant` in `/manga-maker/settings` |
-| `POST /manga-maker/settings` | Persist settings; see replacement semantics below |
+| `GET /anima-manga-maker/settings` | Current global configuration |
+| `GET /anima-manga-maker/models` | Catalog `profiles`, `artifacts`, installed weight paths and download state; does not start downloads |
+| `GET /anima-manga-maker/assistant` | Story assistant: `available` (llama-cpp-python installed), `defaults`, GGUF `models` with compatible `projectors`, scan `errors`, and whether a model is `loaded`. Settings live under `assistant` in `/anima-manga-maker/settings` |
+| `POST /anima-manga-maker/settings` | Persist settings; see replacement semantics below |
 
 If `/object_info` responds but Studio routes return 404, check plugin path, startup import errors and whether its Python code was loaded after installation. Do not POST to a missing route or create replacement server code. A stopped server cannot reveal its loaded schemas; inspect configuration/startup logs and defer live verification until it starts.
 
@@ -19,11 +19,11 @@ Schemas may advertise combos as a list in the first input slot or as `COMBO` wit
 
 ## Settings shape and preservation
 
-Global configuration is stored in the active ComfyUI user directory as `manga-maker-settings.json`; do not assume a fixed absolute user path. Its top-level fields are:
+Global configuration is stored in the active ComfyUI user directory as `anima-manga-maker-settings.json`; do not assume a fixed absolute user path. Its top-level fields are:
 
 ```json
 {
-  "root": "/absolute/path/to/manga-maker-projects",
+  "root": "/absolute/path/to/anima-manga-maker-projects",
   "defaults": {},
   "models": {},
   "presets": {},
@@ -39,14 +39,14 @@ A safe request sequence for a user-requested change is:
 
 ```python
 # Pseudocode: use the confirmed server and its existing authenticated client.
-before = get_json('/manga-maker/settings')
+before = get_json('/anima-manga-maker/settings')
 save_backup(before)  # local backup outside published repository content
 models = deepcopy(before.get('models', {}))
 profile = models.setdefault('qwen', {})
 profile.update(validated_user_requested_fields)
 # Re-read before saving if discovery or user decisions took time; re-merge on changes.
-post_json('/manga-maker/settings', {'models': models})
-after = get_json('/manga-maker/settings')
+post_json('/anima-manga-maker/settings', {'models': models})
+after = get_json('/anima-manga-maker/settings')
 # Compare all settings with before, allowing only requested profile changes.
 ```
 
@@ -56,7 +56,7 @@ Project configuration stores operation settings under `config`, such as `panels:
 
 ## Downloads and verification
 
-For an explicitly authorized official model download, Studio uses `POST /manga-maker/models/download` with `{"engine":"krea"}`, `{"engine":"krea_edit"}` or `{"engine":"qwen"}`. Inspect the catalog first: each profile may include several large files. Poll `GET /manga-maker/models` and inspect `downloads[engine].state`; a successful POST is not completion. States include `queued`, `downloading`, `complete` and `error`. Download states can include `filename`, `received`, `total` and `error`; wait for `complete` and read configuration back before reporting success.
+For an explicitly authorized official model download, Studio uses `POST /anima-manga-maker/models/download` with `{"engine":"krea"}`, `{"engine":"krea_edit"}` or `{"engine":"qwen"}`. Inspect the catalog first: each profile may include several large files. Poll `GET /anima-manga-maker/models` and inspect `downloads[engine].state`; a successful POST is not completion. States include `queued`, `downloading`, `complete` and `error`. Download states can include `filename`, `received`, `total` and `error`; wait for `complete` and read configuration back before reporting success.
 
 Completion applies the profile's recommended settings globally. Existing operation overrides still win. The `qwen` profile is regular Qwen, not QWEN-Manga Turbo; Sketch LoRAs and optional annotator weights are separate. Do not invoke this endpoint for an inventory-only request.
 

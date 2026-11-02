@@ -49,17 +49,17 @@ export function sketchControls(studio, kind, project, send, busyChanged) {
     const hints = { sketch: 'Generate the canvas or a selected region as a new AI layer.', manga: 'Convert the canvas or selected region into an editable manga layer.',
         bbox: 'Draw boxes on the canvas, describe them, then generate the whole canvas as a new AI layer.' };
     const status = el('small', { role: 'status', text: 'Generate the canvas or a selected region as a new AI layer.' });
-    const canvas = el('canvas', { class: 'mm-sketch-preview', width: 320, height: 200, 'aria-label': 'Sketch region preview', 'aria-describedby': 'mm-sketch-region-help', tabIndex: 0 });
+    const canvas = el('canvas', { class: 'amm-sketch-preview', width: 320, height: 200, 'aria-label': 'Sketch region preview', 'aria-describedby': 'amm-sketch-region-help', tabIndex: 0 });
     const realtime = el('input', { type: 'checkbox', 'aria-label': 'Realtime on stroke release', onchange: () => {
         pending = false; status.textContent = realtime.checked ? 'Realtime enabled · Generate after releasing a stroke.' : 'Realtime paused.';
     } });
     const changed = () => { revision++; studio.presetChanged(scope, element); scheduleLive(); };
-    const generate = button('Generate Sketch to Art', () => start(), { class: 'mm-primary', disabled: true });
+    const generate = button('Generate Sketch to Art', () => start(), { class: 'amm-primary', disabled: true });
     const cancel = button('Cancel generation', () => stop(), { disabled: true });
     const preview = button('Update region preview', () => { if (!active) send('manga-drawing-snapshot', { token: 'preview' }); }, { disabled: true });
     const regionMode = segmented('Drawing area', [['canvas', 'Whole canvas'], ['region', 'Selected region']], cfg.region_mode || 'canvas',
         value => { cfg.region_mode = value; if (cfg.region_mode === 'canvas') resetMaskMode(); changed(); paintPreview(); });
-    const coordinates = el('div', { class: 'mm-sketch-coordinates' }); const inputs = {};
+    const coordinates = el('div', { class: 'amm-sketch-coordinates' }); const inputs = {};
     for (const [key, label] of [['x', 'X'], ['y', 'Y'], ['width', 'Region width'], ['height', 'Region height']]) {
         inputs[key] = el('input', { type: 'number', 'aria-label': label, step: 1, value: cfg.region?.[key] ?? 0, onchange: () => {
             cfg.region ||= {}; cfg.region[key] = Number(inputs[key].value); changed(); paintPreview();
@@ -75,7 +75,7 @@ export function sketchControls(studio, kind, project, send, busyChanged) {
         toggle('Use stitch mask', maskEnabled), maskTool, slider('Mask brush size · px', maskSize, [1, 256]), toggle('Crop to mask bounds', cropMask),
         button('Clear mask', () => { maskCanvas.getContext('2d').clearRect(0, 0, maskCanvas.width, maskCanvas.height); resetMaskMode(); changed(); paintPreview(); }));
     function resetMaskMode() { maskEnabled.checked = false; maskTool.value = 'region'; }
-    const presets = el('div', { class: 'mm-row' });
+    const presets = el('div', { class: 'amm-row' });
     const blend = el('details');
     const prompt = el('details');
     const transparency = el('div');
@@ -125,9 +125,9 @@ export function sketchControls(studio, kind, project, send, busyChanged) {
     });
     const sketchSettings = el('div', {}, sketchEngine, presets, blend, prompt, transparency, sampling, models, toggle('Realtime on stroke release', realtime));
     const workflowSettings = el('div', {}, sketchSettings);
-    const regionControls = el('div', {}, regionMode, el('small', { id: 'mm-sketch-region-help', text: 'Drag with the left mouse button on the preview to select the generation region. Choose Whole canvas to reset.' }), canvas, coordinates, preview, maskControls);
-    const element = el('aside', { class: 'mm-sketch-controls', 'aria-label': 'Sketch to Art controls' }, tool, heading,
-        regionControls, workflowSettings, el('div', { class: 'mm-run-bar' }, el('div', { class: 'mm-row' }, generate, cancel), status));
+    const regionControls = el('div', {}, regionMode, el('small', { id: 'amm-sketch-region-help', text: 'Drag with the left mouse button on the preview to select the generation region. Choose Whole canvas to reset.' }), canvas, coordinates, preview, maskControls);
+    const element = el('aside', { class: 'amm-sketch-controls', 'aria-label': 'Sketch to Art controls' }, tool, heading,
+        regionControls, workflowSettings, el('div', { class: 'amm-run-bar' }, el('div', { class: 'amm-row' }, generate, cancel), status));
     renderSettings();
     function update() { generate.disabled = !ready || !!active; preview.disabled = !ready || !!active; cancel.disabled = !active || stopping; tool.disabled = !!active; busyChanged(); }
     function region() {
@@ -223,7 +223,7 @@ export function sketchControls(studio, kind, project, send, busyChanged) {
         const r = region(), crop = document.createElement('canvas'); crop.width = r.width; crop.height = r.height;
         crop.getContext('2d').drawImage(previewImage, r.x, r.y, r.width, r.height, 0, 0, r.width, r.height);
         const form = new FormData(); form.append('image', await new Promise(resolve => crop.toBlob(resolve, 'image/png')), `live-${layerId}.png`);
-        form.append('type', 'temp'); form.append('subfolder', `manga-maker-drawing/${project}`); form.append('overwrite', 'true');
+        form.append('type', 'temp'); form.append('subfolder', `anima-manga-maker-drawing/${project}`); form.append('overwrite', 'true');
         const response = await api.fetchApi('/upload/image', { method: 'POST', body: form }); const uploaded = await response.json();
         if (!response.ok) throw new Error(uploaded.error || 'Could not stage the drawing region.');
         liveSource = `${uploaded.subfolder ? uploaded.subfolder + '/' : ''}${uploaded.name} [${uploaded.type}]`; liveKey = `${drawnAt}:${JSON.stringify(r)}`; liveRegion = r;
@@ -284,7 +284,7 @@ export function sketchControls(studio, kind, project, send, busyChanged) {
                     mask.getContext('2d').drawImage(maskCanvas, r.x, r.y, r.width, r.height, 0, 0, r.width, r.height);
                     ticket.mask = await new Promise(resolve => mask.toBlob(resolve, 'image/png'));
                 }
-                const form = new FormData(); form.append('image', blob, `${ticket.token}.png`); form.append('type', 'temp'); form.append('subfolder', `manga-maker-drawing/${project}`);
+                const form = new FormData(); form.append('image', blob, `${ticket.token}.png`); form.append('type', 'temp'); form.append('subfolder', `anima-manga-maker-drawing/${project}`);
                 status.textContent = 'Uploading the drawing region…';
                 const response = await api.fetchApi('/upload/image', { method: 'POST', body: form }); const uploaded = await response.json();
                 if (!response.ok) throw new Error(uploaded.error || 'Could not stage the drawing region.');
@@ -300,7 +300,7 @@ export function sketchControls(studio, kind, project, send, busyChanged) {
             }
             status.textContent = `${ticket.name} queued…`;
             const queued = await api.fetchApi('/prompt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-                prompt_id: job.id, client_id: api.clientId, prompt: built.graph, extra_data: { manga_maker: { project, operation: ticket.operation, job: job.id } },
+                prompt_id: job.id, client_id: api.clientId, prompt: built.graph, extra_data: { anima_manga_maker: { project, operation: ticket.operation, job: job.id } },
             }) });
             const result = await queued.json();
             if (!queued.ok || result.prompt_id !== job.id) throw new Error(JSON.stringify(result.node_errors || result.error || result));

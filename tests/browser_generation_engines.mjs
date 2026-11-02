@@ -17,17 +17,17 @@ const errors = []; page.on('pageerror', error => errors.push(error.message));
 const queued = [];
 try {
     if (process.argv[4]) await page.route(/\/(?:api\/)?object_info(?:\?.*)?$/, route => route.fulfill({ json: defs }));
-    await page.addInitScript(({ project }) => { localStorage.setItem('mm-project', project); localStorage.setItem('mm-space', 'panels'); }, { project: backend.project });
-    await page.route('**/extensions/ComfyUI-MangaMakerStudio/**', async route => {
+    await page.addInitScript(({ project }) => { localStorage.setItem('amm-project', project); localStorage.setItem('amm-space', 'panels'); }, { project: backend.project });
+    await page.route('**/extensions/ComfyUI-AnimaMangaMakerStudio/**', async route => {
         const name = new URL(route.request().url()).pathname.split('/').at(-1);
         await route.fulfill({ body: await fs.readFile(path.join(root, 'web', name)), contentType: name.endsWith('.css') ? 'text/css' : 'application/javascript' });
     });
     await page.route(/\/extensions\/?(?:\?.*)?$/, async route => {
         const response = await route.fetch(), list = await response.json();
-        if (!list.includes('/extensions/ComfyUI-MangaMakerStudio/extension.js')) list.push('/extensions/ComfyUI-MangaMakerStudio/extension.js');
+        if (!list.includes('/extensions/ComfyUI-AnimaMangaMakerStudio/extension.js')) list.push('/extensions/ComfyUI-AnimaMangaMakerStudio/extension.js');
         await route.fulfill({ json: list });
     });
-    await page.route(/\/(?:api\/)?manga-maker\//, async route => {
+    await page.route(/\/(?:api\/)?anima-manga-maker\//, async route => {
         const url = new URL(route.request().url()), pathname = url.pathname.replace(/^\/api\//, '/');
         await route.fulfill({ response: await route.fetch({ url: backend.url + pathname + url.search }) });
     });
@@ -37,13 +37,13 @@ try {
         await route.fulfill({ json: await response.json() });
     });
     await page.goto(process.env.COMFY_URL || 'http://127.0.0.1:8188', { waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(() => window.comfyAPI?.app?.app?.graph && window.comfyAPI.app.app.extensions.some(e => e.name === 'MangaMaker.Studio'));
+    await page.waitForFunction(() => window.comfyAPI?.app?.app?.graph && window.comfyAPI.app.app.extensions.some(e => e.name === 'AnimaMangaMaker.Studio'));
     await page.waitForTimeout(2500);
     const graphBefore = await page.evaluate(() => {
         const app = window.comfyAPI.app.app, graph = app.graph.serialize();
-        app.extensions.find(e => e.name === 'MangaMaker.Studio').commands[0].function(); return graph;
+        app.extensions.find(e => e.name === 'AnimaMangaMaker.Studio').commands[0].function(); return graph;
     });
-    const studio = page.locator('.mm-studio'); await studio.waitFor();
+    const studio = page.locator('.amm-studio'); await studio.waitFor();
     for (const space of ['references', 'panels']) {
         await studio.getByRole('button', { name: space === 'references' ? 'References' : 'Panels', exact: true }).click();
         const view = studio.locator(`.mm-${space}`);
@@ -61,7 +61,7 @@ try {
             const before = queued.length;
             await view.getByRole('button', { name: space === 'references' ? 'Generate reference' : 'Generate panel', exact: true }).click();
             await page.waitForTimeout(1000);
-            assert.equal(queued.length, before + 1, await studio.locator('.mm-error').textContent());
+            assert.equal(queued.length, before + 1, await studio.locator('.amm-error').textContent());
             const nodes = Object.values(queued.at(-1).prompt);
             const sampler = nodes.find(n => n.class_type === 'KSampler');
             assert.equal(sampler.inputs.steps, 8); assert.equal(sampler.inputs.cfg, 1); assert.equal(sampler.inputs.sampler_name, 'er_sde');

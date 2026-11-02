@@ -1,4 +1,4 @@
-# Manga Maker Studio documentation
+# Anima Manga Maker Studio documentation
 
 [Project README](../README.md)
 

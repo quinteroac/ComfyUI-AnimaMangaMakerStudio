@@ -18,8 +18,8 @@ from .storage import ProjectStore, RevisionConflict, contained
 from .models import ModelDownloads
 from . import style_library
 
-store = ProjectStore(Path(folder_paths.get_user_directory()) / 'manga-maker-settings.json',
-                     Path(folder_paths.get_user_directory()) / 'manga-maker-projects')
+store = ProjectStore(Path(folder_paths.get_user_directory()) / 'anima-manga-maker-settings.json',
+                     Path(folder_paths.get_user_directory()) / 'anima-manga-maker-projects')
 routes = PromptServer.instance.routes
 model_downloads = ModelDownloads()
 
@@ -40,7 +40,7 @@ def endpoint(fn):
     return wrapped
 
 
-@routes.get('/manga-maker/drawing/{path:.*}')
+@routes.get('/anima-manga-maker/drawing/{path:.*}')
 @endpoint
 async def drawing_files(request):
     path = contained(Path(__file__).parent / 'drawing', request.match_info['path'])
@@ -49,7 +49,7 @@ async def drawing_files(request):
     return response
 
 
-@routes.post('/manga-maker/projects/{project}/drawings')
+@routes.post('/anima-manga-maker/projects/{project}/drawings')
 @endpoint
 async def save_drawing(request):
     fields = {}; reader = await request.multipart()
@@ -60,26 +60,26 @@ async def save_drawing(request):
     return web.json_response(await asyncio.to_thread(store.import_drawing, request.match_info['project'], fields.get('kind', 'references'), fields['image'], fields['document'], fields.get('name', 'Drawing'), fields.get('parent') or None))
 
 
-@routes.get('/manga-maker/projects/{project}/assets/{asset}/drawing')
+@routes.get('/anima-manga-maker/projects/{project}/assets/{asset}/drawing')
 @endpoint
 async def drawing_document(request):
     project = request.match_info['project']; asset = store.asset(project, request.match_info['asset'])
     return web.FileResponse(store.drawing_path(project, asset))
 
 
-@routes.get('/manga-maker/settings')
+@routes.get('/anima-manga-maker/settings')
 @endpoint
 async def settings(request):
     return web.json_response(store.settings())
 
 
-@routes.get('/manga-maker/models')
+@routes.get('/anima-manga-maker/models')
 @endpoint
 async def models(request):
     return web.json_response(await asyncio.to_thread(model_downloads.catalog))
 
 
-@routes.post('/manga-maker/models/download')
+@routes.post('/anima-manga-maker/models/download')
 @endpoint
 async def download_models(request):
     body = await request.json()
@@ -108,7 +108,7 @@ def configure_downloaded_models(engine, task):
         model_downloads.states[engine].update(state='error', error=f'Weights installed, but settings could not be saved: {error}')
 
 
-@routes.post('/manga-maker/settings')
+@routes.post('/anima-manga-maker/settings')
 @endpoint
 async def set_settings(request):
     data = await request.json()
@@ -127,19 +127,19 @@ def configure_settings(data):
         return store.configure(data)
 
 
-@routes.get('/manga-maker/projects')
+@routes.get('/anima-manga-maker/projects')
 @endpoint
 async def projects(request):
     return web.json_response(await asyncio.to_thread(store.list))
 
 
-@routes.get('/manga-maker/fonts')
+@routes.get('/anima-manga-maker/fonts')
 @endpoint
 async def fonts(request):
     return web.json_response(store.fonts())
 
 
-@routes.post('/manga-maker/fonts')
+@routes.post('/anima-manga-maker/fonts')
 @endpoint
 async def install_font(request):
     reader = await request.multipart()
@@ -149,26 +149,26 @@ async def install_font(request):
     raise ValueError('Select a font file')
 
 
-@routes.get('/manga-maker/fonts/{font}')
+@routes.get('/anima-manga-maker/fonts/{font}')
 @endpoint
 async def font_file(request):
     return web.FileResponse(store.font_path(request.match_info['font']))
 
 
-@routes.get('/manga-maker/styles/animadex/{kind}')
+@routes.get('/anima-manga-maker/styles/animadex/{kind}')
 @endpoint
 async def animadex_styles(request):
     query = request.query
     return web.json_response(await asyncio.to_thread(style_library.animadex, request.match_info['kind'], query.get('q', ''), max(0, int(query.get('offset', 0))), min(200, int(query.get('limit', 60)))))
 
 
-@routes.get('/manga-maker/styles/stylebook')
+@routes.get('/anima-manga-maker/styles/stylebook')
 @endpoint
 async def stylebook_styles(request):
     return web.json_response(await asyncio.to_thread(style_library.stylebook))
 
 
-@routes.get('/manga-maker/styles/preview/{source}/{path:.*}')
+@routes.get('/anima-manga-maker/styles/preview/{source}/{path:.*}')
 @endpoint
 async def style_preview(request):
     path = contained(style_library.preview_roots[request.match_info['source']], request.match_info['path'])
@@ -177,14 +177,14 @@ async def style_preview(request):
     return web.FileResponse(path, headers={'Content-Type': style_library.preview_types[path.suffix.lower()]})
 
 
-@routes.post('/manga-maker/projects')
+@routes.post('/anima-manga-maker/projects')
 @endpoint
 async def create(request):
     data = await request.json()
     return web.json_response(store.create(data['name']))
 
 
-@routes.get('/manga-maker/projects/{project}')
+@routes.get('/anima-manga-maker/projects/{project}')
 @endpoint
 async def read(request):
     project_id = request.match_info['project']
@@ -192,20 +192,20 @@ async def read(request):
     return web.json_response(store.read(project_id))
 
 
-@routes.put('/manga-maker/projects/{project}')
+@routes.put('/anima-manga-maker/projects/{project}')
 @endpoint
 async def update(request):
     return web.json_response(store.update(request.match_info['project'], await request.json()))
 
 
-@routes.post('/manga-maker/projects/{project}/duplicate')
+@routes.post('/anima-manga-maker/projects/{project}/duplicate')
 @endpoint
 async def duplicate(request):
     body = await request.json()
     return web.json_response(await asyncio.to_thread(store.duplicate, request.match_info['project'], body['name']))
 
 
-@routes.post('/manga-maker/projects/{project}/import')
+@routes.post('/anima-manga-maker/projects/{project}/import')
 @endpoint
 async def import_image(request):
     reader = await request.multipart()
@@ -226,13 +226,13 @@ async def import_image(request):
     return web.json_response(result)
 
 
-@routes.patch('/manga-maker/projects/{project}/assets')
+@routes.patch('/anima-manga-maker/projects/{project}/assets')
 @endpoint
 async def patch_assets(request):
     return web.json_response(store.patch_assets(request.match_info['project'], await request.json()))
 
 
-@routes.get('/manga-maker/projects/{project}/assets/{asset}')
+@routes.get('/anima-manga-maker/projects/{project}/assets/{asset}')
 @endpoint
 async def view(request):
     project = request.match_info['project']
@@ -252,7 +252,7 @@ async def view(request):
     return web.FileResponse(path)
 
 
-@routes.post('/manga-maker/projects/{project}/stage')
+@routes.post('/anima-manga-maker/projects/{project}/stage')
 @endpoint
 async def stage(request):
     project = request.match_info['project']
@@ -260,7 +260,7 @@ async def stage(request):
     result = []
     for asset_id in body['assets']:
         asset = store.asset(project, asset_id)
-        relative = f'manga-maker/{project}/{asset_id}.png'
+        relative = f'anima-manga-maker/{project}/{asset_id}.png'
         destination = contained(folder_paths.get_input_directory(), relative)
         destination.parent.mkdir(parents=True, exist_ok=True)
         await asyncio.to_thread(shutil.copyfile, store.asset_path(project, asset), destination)
@@ -332,7 +332,7 @@ def synchronize(project_id):
                 state = 'error'
                 job['error'] = 'The queue or history no longer contains this job; check ComfyUI history.'
             if job['operation'] in ('sketch', 'manga', 'bbox') and state in ('complete', 'error', 'cancelled'):
-                contained(folder_paths.get_temp_directory(), f"manga-maker-drawing/{project_id}/{str(uuid.UUID(job['id']))}.png").unlink(missing_ok=True)
+                contained(folder_paths.get_temp_directory(), f"anima-manga-maker-drawing/{project_id}/{str(uuid.UUID(job['id']))}.png").unlink(missing_ok=True)
             if state != job['state']:
                 job['state'] = state
                 changed = True
@@ -347,16 +347,16 @@ def synchronize(project_id):
             store.write(fresh)
 
 
-@routes.delete('/manga-maker/projects/{project}/drawing-inputs/{job}')
+@routes.delete('/anima-manga-maker/projects/{project}/drawing-inputs/{job}')
 @endpoint
 async def remove_drawing_input(request):
     project = request.match_info['project']; store.read(project)
     job_id = str(uuid.UUID(request.match_info['job']))
-    contained(folder_paths.get_temp_directory(), f'manga-maker-drawing/{project}/{job_id}.png').unlink(missing_ok=True)
+    contained(folder_paths.get_temp_directory(), f'anima-manga-maker-drawing/{project}/{job_id}.png').unlink(missing_ok=True)
     return web.json_response({'removed': True})
 
 
-@routes.post('/manga-maker/projects/{project}/jobs')
+@routes.post('/anima-manga-maker/projects/{project}/jobs')
 @endpoint
 async def register_job(request):
     project = request.match_info['project']
@@ -375,7 +375,7 @@ async def register_job(request):
     return web.json_response(body)
 
 
-@routes.get('/manga-maker/projects/{project}/jobs/{job}')
+@routes.get('/anima-manga-maker/projects/{project}/jobs/{job}')
 @endpoint
 async def get_job(request):
     project = request.match_info['project']; await asyncio.to_thread(synchronize, project)
@@ -385,7 +385,7 @@ async def get_job(request):
     return web.json_response(job)
 
 
-@routes.patch('/manga-maker/projects/{project}/jobs/{job}')
+@routes.patch('/anima-manga-maker/projects/{project}/jobs/{job}')
 @endpoint
 async def fail_job(request):
     body = await request.json()
@@ -413,7 +413,7 @@ async def collect_results(app):
                 try:
                     await asyncio.to_thread(synchronize, project['id'])
                 except (OSError, ValueError, KeyError) as error:
-                    PromptServer.instance.send_sync('manga_maker_error', {'project': project['id'], 'error': str(error)})
+                    PromptServer.instance.send_sync('anima_manga_maker_error', {'project': project['id'], 'error': str(error)})
             await asyncio.sleep(2)
     task = asyncio.create_task(collect())
     yield

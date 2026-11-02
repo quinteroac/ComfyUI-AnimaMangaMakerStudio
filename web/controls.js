@@ -5,16 +5,16 @@ export function combo(label, list, current, change, help = '') {
     const id = `mm-${uuid()}`; let committed = current || '', active = -1, items = [];
     const input = el('input', { value: committed, role: 'combobox', 'aria-label': label, 'aria-autocomplete': 'list', 'aria-expanded': 'false', 'aria-controls': id,
         autocomplete: 'off', spellcheck: false, placeholder: 'Search and select…' });
-    const listbox = el('div', { id, class: 'mm-combo-list', role: 'listbox', popover: 'manual' });
+    const listbox = el('div', { id, class: 'amm-combo-list', role: 'listbox', popover: 'manual' });
     const note = el('small', { text: current && !list.includes(current) ? `Missing selection: ${current}` : help, hidden: !(current && !list.includes(current)) && !help });
-    const clear = el('button', { type: 'button', class: 'mm-combo-button', tabIndex: -1, 'aria-label': `Clear ${label}`, title: 'Clear', onpointerdown: e => e.preventDefault(), onclick: () => { commit(''); input.focus(); } }, icon('clear'));
-    const expand = el('button', { type: 'button', class: 'mm-combo-button', tabIndex: -1, 'aria-hidden': 'true', onpointerdown: e => e.preventDefault(), onclick: () => { input.focus(); if (listbox.matches(':popover-open')) close(); else open(true); } }, icon('down'));
+    const clear = el('button', { type: 'button', class: 'amm-combo-button', tabIndex: -1, 'aria-label': `Clear ${label}`, title: 'Clear', onpointerdown: e => e.preventDefault(), onclick: () => { commit(''); input.focus(); } }, icon('clear'));
+    const expand = el('button', { type: 'button', class: 'amm-combo-button', tabIndex: -1, 'aria-hidden': 'true', onpointerdown: e => e.preventDefault(), onclick: () => { input.focus(); if (listbox.matches(':popover-open')) close(); else open(true); } }, icon('down'));
     // Only the border tracks validity live; changing the note's height on blur would move the button being clicked.
-    const mark = () => { input.classList.toggle('mm-missing', !!committed && !list.includes(committed)); clear.hidden = !input.value; };
+    const mark = () => { input.classList.toggle('amm-missing', !!committed && !list.includes(committed)); clear.hidden = !input.value; };
     const commit = value => { input.value = committed = value; close(); mark(); change(value); };
     const highlight = index => {
         active = index; const options = listbox.querySelectorAll('[role=option]');
-        options.forEach((option, i) => option.classList.toggle('mm-active', i === index));
+        options.forEach((option, i) => option.classList.toggle('amm-active', i === index));
         if (options[index]) { input.setAttribute('aria-activedescendant', options[index].id); options[index].scrollIntoView({ block: 'nearest' }); }
     };
     const onScroll = e => { if (!listbox.contains(e.target)) close(); };
@@ -34,8 +34,8 @@ export function combo(label, list, current, change, help = '') {
         }
         items = [...groups.values()].flat().map(([value]) => value);
         let index = 0;
-        listbox.replaceChildren(...[...groups].flatMap(([folder, entries]) => [...folder ? [el('div', { class: 'mm-combo-group', role: 'presentation', text: folder })] : [],
-            ...entries.map(([value, name]) => el('div', { id: `${id}-${index++}`, role: 'option', class: 'mm-combo-option', title: value, 'aria-selected': String(value === committed),
+        listbox.replaceChildren(...[...groups].flatMap(([folder, entries]) => [...folder ? [el('div', { class: 'amm-combo-group', role: 'presentation', text: folder })] : [],
+            ...entries.map(([value, name]) => el('div', { id: `${id}-${index++}`, role: 'option', class: 'amm-combo-option', title: value, 'aria-selected': String(value === committed),
                 onpointerdown: e => { e.preventDefault(); commit(value); }, onpointermove: () => highlight(items.indexOf(value)) }, el('span', { text: name })))]));
         if (!listbox.matches(':popover-open')) listbox.showPopover();
         input.setAttribute('aria-expanded', 'true'); addEventListener('scroll', onScroll, true);
@@ -57,14 +57,14 @@ export function combo(label, list, current, change, help = '') {
         else if (e.key === 'Escape' && opened) { e.preventDefault(); e.stopPropagation(); close(); }
     });
     mark();
-    return el('label', { class: 'mm-field' }, el('span', { text: label }), el('div', { class: 'mm-combo' }, input, clear, expand, listbox), note);
+    return el('label', { class: 'amm-field' }, el('span', { text: label }), el('div', { class: 'amm-combo' }, input, clear, expand, listbox), note);
 }
 
 // Radio group styled as a segmented control; `value` mirrors a select for callers that set it programmatically.
 export function segmented(label, values, current, change) {
     const name = `mm-${uuid()}`;
-    const group = el('fieldset', { class: 'mm-field mm-segmented-field', role: 'radiogroup', 'aria-label': label }, el('legend', { text: label }),
-        el('div', { class: 'mm-segmented' }, ...values.map(([value, text, symbol, disabled]) => el('label', { title: text },
+    const group = el('fieldset', { class: 'amm-field amm-segmented-field', role: 'radiogroup', 'aria-label': label }, el('legend', { text: label }),
+        el('div', { class: 'amm-segmented' }, ...values.map(([value, text, symbol, disabled]) => el('label', { title: text },
             el('input', { type: 'radio', name, value, checked: value === current, disabled: !!disabled, onchange: () => change(value) }), symbol ? icon(symbol) : null, el('span', { text })))));
     Object.defineProperty(group, 'value', {
         get: () => group.querySelector('input:checked')?.value ?? '',
@@ -79,21 +79,21 @@ export function slider(label, input, [min, max], help = '') {
     range.addEventListener('input', () => { input.value = range.value; });
     range.addEventListener('change', () => input.dispatchEvent(new Event('change')));
     for (const name of ['input', 'change']) input.addEventListener(name, () => { range.value = input.value; });
-    return field(label, el('div', { class: 'mm-slider' }, input, range), help);
+    return field(label, el('div', { class: 'amm-slider' }, input, range), help);
 }
 
-export const toggle = (label, input, help = '') => (input.setAttribute('role', 'switch'), el('label', { class: 'mm-toggle' }, input, el('span', { text: label }), help ? el('small', { text: help }) : null));
+export const toggle = (label, input, help = '') => (input.setAttribute('role', 'switch'), el('label', { class: 'amm-toggle' }, input, el('span', { text: label }), help ? el('small', { text: help }) : null));
 
 export function seed(label, cfg, changed, randomLabel = 'Random seed') {
     const input = el('input', { type: 'number', min: 0, step: 1, value: cfg.seed, onchange: e => { cfg.seed = Number(e.target.value); changed(); } });
-    return el('div', { class: 'mm-seed' }, field(label, el('div', { class: 'mm-row' }, input,
+    return el('div', { class: 'amm-seed' }, field(label, el('div', { class: 'amm-row' }, input,
         iconButton('New random seed', 'dice', () => { input.value = cfg.seed = Math.floor(Math.random() * 2 ** 48); changed(); }))),
         toggle(randomLabel, el('input', { type: 'checkbox', checked: cfg.random_seed, onchange: e => { cfg.random_seed = e.target.checked; changed(); } })));
 }
 
 // Drag or arrow-key handle that sets the width of the adjacent panel; `invert` is for panels on the right side.
 export function resizer(target, label, invert = false) {
-    const handle = el('div', { class: 'mm-resizer', role: 'separator', 'aria-orientation': 'vertical', 'aria-label': label, tabIndex: 0 });
+    const handle = el('div', { class: 'amm-resizer', role: 'separator', 'aria-orientation': 'vertical', 'aria-label': label, tabIndex: 0 });
     const resize = width => { target.style.width = `${Math.round(width)}px`; };
     handle.addEventListener('pointerdown', e => {
         if (e.button) return;

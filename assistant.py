@@ -226,7 +226,7 @@ def content(project_id, text, images, required=True):
     return [{'type': 'text', 'text': text}, *({'type': 'image_url', 'image_url': {'url': url}} for url in urls)] if urls else text
 
 
-@routes.get('/manga-maker/assistant')
+@routes.get('/anima-manga-maker/assistant')
 @endpoint
 async def assistant_state(request):
     models, projectors, errors = await asyncio.to_thread(catalog)
@@ -234,7 +234,7 @@ async def assistant_state(request):
                               'projectors': [public(p) for p in projectors], 'errors': errors, 'loaded': RUNTIME.loaded, 'busy': RUNTIME.lock.locked()})
 
 
-@routes.post('/manga-maker/assistant/cancel')
+@routes.post('/anima-manga-maker/assistant/cancel')
 @endpoint
 async def assistant_cancel(request):
     if RUNTIME.lock.locked():
@@ -242,7 +242,7 @@ async def assistant_cancel(request):
     return web.json_response({'cancelled': True})
 
 
-@routes.post('/manga-maker/assistant/release')
+@routes.post('/anima-manga-maker/assistant/release')
 @endpoint
 async def assistant_release(request):
     if RUNTIME.lock.locked():
@@ -251,13 +251,13 @@ async def assistant_release(request):
     return web.json_response({'loaded': False})
 
 
-@routes.get('/manga-maker/projects/{project}/assistant')
+@routes.get('/anima-manga-maker/projects/{project}/assistant')
 @endpoint
 async def assistant_chats(request):
     return web.json_response(store.chats(request.match_info['project']))
 
 
-@routes.delete('/manga-maker/projects/{project}/assistant/{module}')
+@routes.delete('/anima-manga-maker/projects/{project}/assistant/{module}')
 @endpoint
 async def assistant_clear(request):
     project, module = request.match_info['project'], request.match_info['module']
@@ -268,7 +268,7 @@ async def assistant_clear(request):
     return web.json_response(chats)
 
 
-@routes.post('/manga-maker/projects/{project}/assistant')
+@routes.post('/anima-manga-maker/projects/{project}/assistant')
 @endpoint
 async def assistant_message(request):
     project = request.match_info['project']

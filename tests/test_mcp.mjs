@@ -11,9 +11,9 @@ let externalEdit = false;
 const server = http.createServer(async (request, response) => {
     let body = ''; for await (const chunk of request) body += chunk;
     const send = (status, value) => { response.writeHead(status, { 'Content-Type': 'application/json' }); response.end(JSON.stringify(value)); };
-    if (request.url === '/manga-maker/projects') return send(200, [{ id, name: project.name, updated: 1, active_jobs: false }]);
-    if (request.url === `/manga-maker/projects/${id}/assets/${asset}?thumb=1`) { response.writeHead(200, { 'Content-Type': 'image/webp' }); return response.end('webp'); }
-    if (request.url !== `/manga-maker/projects/${id}`) return send(404, { error: 'Missing' });
+    if (request.url === '/anima-manga-maker/projects') return send(200, [{ id, name: project.name, updated: 1, active_jobs: false }]);
+    if (request.url === `/anima-manga-maker/projects/${id}/assets/${asset}?thumb=1`) { response.writeHead(200, { 'Content-Type': 'image/webp' }); return response.end('webp'); }
+    if (request.url !== `/anima-manga-maker/projects/${id}`) return send(404, { error: 'Missing' });
     if (request.method === 'GET') return send(200, project);
     const patch = JSON.parse(body);
     if (externalEdit) { externalEdit = false; project.revision++; }
@@ -29,7 +29,7 @@ readline.createInterface({ input: child.stdout }).on('line', line => { const mes
 const rpc = (method, params) => new Promise(resolve => { const n = ++next; replies.set(n, resolve); child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: n, method, params }) + '\n'); });
 const call = async (name, args) => (await rpc('tools/call', { name, arguments: args })).result;
 
-assert.equal((await rpc('initialize', { protocolVersion: '2025-06-18' })).result.serverInfo.name, 'manga-maker-studio');
+assert.equal((await rpc('initialize', { protocolVersion: '2025-06-18' })).result.serverInfo.name, 'anima-manga-maker-studio');
 child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
 const tools = (await rpc('tools/list')).result.tools;
 assert(tools.some(t => t.name === 'story_page' && t.inputSchema.required.includes('target')));

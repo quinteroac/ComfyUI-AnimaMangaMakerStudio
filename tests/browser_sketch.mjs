@@ -18,17 +18,17 @@ const errors = []; page.on('pageerror', error => errors.push(error.message));
 const queued = [], uploads = [], cancellations = []; let hold = false;
 try {
     if (process.argv[4]) await page.route(/\/(?:api\/)?object_info(?:\?.*)?$/, route => route.fulfill({ json: defs }));
-    await page.addInitScript(({ project }) => { localStorage.setItem('mm-project', project); localStorage.setItem('mm-space', 'panels'); }, { project: backend.project });
-    await page.route('**/extensions/ComfyUI-MangaMakerStudio/**', async route => {
+    await page.addInitScript(({ project }) => { localStorage.setItem('amm-project', project); localStorage.setItem('amm-space', 'panels'); }, { project: backend.project });
+    await page.route('**/extensions/ComfyUI-AnimaMangaMakerStudio/**', async route => {
         const name = new URL(route.request().url()).pathname.split('/').at(-1);
         await route.fulfill({ body: await fs.readFile(path.join(root, 'web', name)), contentType: name.endsWith('.css') ? 'text/css' : 'application/javascript' });
     });
     await page.route(/\/extensions\/?(?:\?.*)?$/, async route => {
         const response = await route.fetch(), list = await response.json();
-        if (!list.includes('/extensions/ComfyUI-MangaMakerStudio/extension.js')) list.push('/extensions/ComfyUI-MangaMakerStudio/extension.js');
+        if (!list.includes('/extensions/ComfyUI-AnimaMangaMakerStudio/extension.js')) list.push('/extensions/ComfyUI-AnimaMangaMakerStudio/extension.js');
         await route.fulfill({ json: list });
     });
-    await page.route(/\/(?:api\/)?manga-maker\//, async route => {
+    await page.route(/\/(?:api\/)?anima-manga-maker\//, async route => {
         const url = new URL(route.request().url()), pathname = url.pathname.replace(/^\/api\//, '/');
         // ComfyUI serves every response with COEP; the Klecks iframe is blocked inside the Studio page without it.
         const response = await route.fetch({ url: backend.url + pathname + url.search });
@@ -58,12 +58,12 @@ try {
         await route.fulfill({ response: await route.fetch({ url: `${backend.url}/test/history/${new URL(route.request().url()).pathname.split('/').at(-1)}` }) });
     });
     await page.goto(process.env.COMFY_URL || 'http://127.0.0.1:8188', { waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(() => window.comfyAPI?.app?.app?.graph && window.comfyAPI.app.app.extensions.some(e => e.name === 'MangaMaker.Studio'));
+    await page.waitForFunction(() => window.comfyAPI?.app?.app?.graph && window.comfyAPI.app.app.extensions.some(e => e.name === 'AnimaMangaMaker.Studio'));
     const graphBefore = await page.evaluate(() => {
         const app = window.comfyAPI.app.app, graph = app.graph.serialize();
-        app.extensions.find(e => e.name === 'MangaMaker.Studio').commands[0].function(); return graph;
+        app.extensions.find(e => e.name === 'AnimaMangaMaker.Studio').commands[0].function(); return graph;
     });
-    const studio = page.locator('.mm-studio'); await studio.waitFor();
+    const studio = page.locator('.amm-studio'); await studio.waitFor();
     const segment = (scope, label) => scope.getByRole('radiogroup', { name: label, exact: true });
     const choose = (scope, label, value) => segment(scope, label).locator(`input[value="${value}"]`).check();
     const chosen = (scope, label) => segment(scope, label).locator('input:checked').inputValue();
@@ -127,7 +127,7 @@ try {
     assert.deepEqual(pngWithGuides, pngWithoutGuides, 'Guides are excluded from image exports and inference snapshots');
 
     await controls.locator('summary').filter({ hasText: /^Prompt$/ }).click();
-    await controls.locator('.mm-prompt-section > summary').filter({ hasText: /^Subject/ }).click();
+    await controls.locator('.amm-prompt-section > summary').filter({ hasText: /^Subject/ }).click();
     await controls.getByLabel('Subject', { exact: true }).fill('A traveler crossing a bridge');
     const editorRevisionBeforePreset = await frame.evaluate(() => editor.getRevision());
     await controls.getByRole('button', { name: 'Save settings as preset', exact: true }).click();
@@ -136,7 +136,7 @@ try {
     await presetDialog.getByRole('button', { name: 'Save', exact: true }).click(); await presetDialog.waitFor({ state: 'detached' });
     const presetSelect = controls.getByLabel('Prompt and settings preset', { exact: true });
     assert.equal(await presetSelect.inputValue(), 'Bridge sketch');
-    await controls.locator('.mm-prompt-section > summary').filter({ hasText: /^Subject/ }).click();
+    await controls.locator('.amm-prompt-section > summary').filter({ hasText: /^Subject/ }).click();
     await controls.getByLabel('Subject', { exact: true }).fill('Modified subject');
     assert.equal(await presetSelect.inputValue(), 'Bridge sketch');
     assert.equal(await presetSelect.locator('option:checked').textContent(), 'Bridge sketch · Modified');
@@ -154,7 +154,7 @@ try {
     await cloneDialog.getByRole('button', { name: 'Save', exact: true }).click(); await cloneDialog.waitFor({ state: 'detached' });
     assert.equal(await presetSelect.inputValue(), 'Bridge sketch copy');
     await page.waitForTimeout(700);
-    const storedPresets = (await (await fetch(`${backend.url}/manga-maker/projects/${backend.project}`)).json()).presets['sketch_panels:krea_edit'];
+    const storedPresets = (await (await fetch(`${backend.url}/anima-manga-maker/projects/${backend.project}`)).json()).presets['sketch_panels:krea_edit'];
     assert.equal(storedPresets['Bridge sketch'].prompt_sections.subject, 'A traveler crossing a bridge');
     assert.deepEqual(storedPresets['Bridge sketch'].region, { x: 32, y: 32, width: 96, height: 96 });
     assert.equal(storedPresets['Bridge sketch'].model_overrides.steps, 1);
@@ -186,7 +186,7 @@ try {
     assert.deepEqual(undoPixels, initial.pixels);
     await page.keyboard.press('Control+y');
     const redoLayerCount = await frame.evaluate(async () => (await editor.readPSD(await (await editor.getPSD()).arrayBuffer())).layers.length); assert.equal(redoLayerCount, 3);
-    const projectAfterManual = await (await fetch(`${backend.url}/manga-maker/projects/${backend.project}`)).json(); assert.equal(projectAfterManual.assets.length, 8);
+    const projectAfterManual = await (await fetch(`${backend.url}/anima-manga-maker/projects/${backend.project}`)).json(); assert.equal(projectAfterManual.assets.length, 8);
     const cdp = await page.context().newCDPSession(page); let penPoint;
     const releasePen = () => cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', pointerType: 'pen', button: 'left', buttons: 0, x: penPoint.x, y: penPoint.y, force: 0 });
     const stroke = async (release = true, pen = false) => {
@@ -205,7 +205,7 @@ try {
     };
     hold = true; await controls.getByLabel('Realtime on stroke release', { exact: true }).check();
     await stroke(false, true); await page.waitForTimeout(100); assert.equal(queued.length, 1); await releasePen();
-    await page.waitForFunction(() => document.querySelector('.mm-sketch-controls [role=status]').textContent.includes('queued'));
+    await page.waitForFunction(() => document.querySelector('.amm-sketch-controls [role=status]').textContent.includes('queued'));
     for (let attempt = 0; queued.length < 2 && attempt < 100; attempt++) await page.waitForTimeout(50);
     assert.equal(queued.length, 2);
     await stroke(); await page.waitForTimeout(200); assert.equal(queued.length, 2);
@@ -404,7 +404,7 @@ try {
         const layerNames = await frame.evaluate(async () => (await editor.readPSD(await (await editor.getPSD()).arrayBuffer())).layers.map(l => l.name));
         assert.equal(layerNames.length, 5); assert(layerNames.at(-1).startsWith('BBox to Image'));
         await page.waitForTimeout(700);
-        assert.equal((await (await fetch(`${backend.url}/manga-maker/projects/${backend.project}`)).json()).workspace.bbox_panels.boxes.length, 1);
+        assert.equal((await (await fetch(`${backend.url}/anima-manga-maker/projects/${backend.project}`)).json()).workspace.bbox_panels.boxes.length, 1);
         assert.equal(await bbox.getByLabel('BBox engine', { exact: true }).inputValue(), 'moss');
         await bbox.getByLabel('BBox engine', { exact: true }).selectOption('qwen');
         assert.equal(await bbox.getByLabel('Box 1 description', { exact: true }).inputValue(), 'A girl with fennec ears', 'Boxes are shared by every engine');
@@ -468,7 +468,7 @@ try {
     }
     await dialog.getByRole('button', { name: 'Save to project', exact: true }).click();
     await dialog.getByText('Saved to project · Layers preserved', { exact: true }).waitFor();
-    const saved = await (await fetch(`${backend.url}/manga-maker/projects/${backend.project}`)).json();
+    const saved = await (await fetch(`${backend.url}/anima-manga-maker/projects/${backend.project}`)).json();
     assert.equal(saved.assets.length, 9); const asset = saved.assets.find(a => a.name === 'AI panel sketch'); assert(asset.metadata.drawing_document);
     await dialog.getByRole('button', { name: 'Close', exact: true }).click();
     await studio.getByRole('button', { name: 'Back to ComfyUI', exact: true }).click();
@@ -479,7 +479,7 @@ try {
     if (process.argv[4]) console.log('BBox to Image passed: boxes drawn, moved, resized, colored and undone on the Klecks canvas, excluded from drawing history and exports, MOSS layout prompt for MOSS and Qwen without uploads, shared boxes, editable layer and saved boxes.');
     console.log('Sketch to Art passed: mask crop/stitch, protected holes, repeated masked layer updates and native undo,  whole-canvas/region pixels, feather and 50% opacity, editable reused layer with native undo/redo, sampler settings, release-only pen realtime, one job at a time, stale result skipped, targeted cancel, layered save and unchanged Comfy graph.');
 } catch (error) {
-    await page.screenshot({ path: '/tmp/manga-sketch-error.png' }); console.error((await page.locator('.mm-studio').innerText().catch(() => 'Studio closed')).slice(-9000), errors); throw error;
+    await page.screenshot({ path: '/tmp/manga-sketch-error.png' }); console.error((await page.locator('.amm-studio').innerText().catch(() => 'Studio closed')).slice(-9000), errors); throw error;
 } finally {
     await page.unrouteAll({ behavior: 'wait' }); await browser.close(); fixture.kill();
 }

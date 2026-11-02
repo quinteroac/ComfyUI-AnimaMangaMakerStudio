@@ -94,13 +94,13 @@ class AssistantTests(unittest.IsolatedAsyncioTestCase):
         self.unloaded += 1
 
     async def ask(self, **body):
-        response = await self.client.post(f"/manga-maker/projects/{self.project['id']}/assistant", json={'module': 'logline', 'text': 'Hi', 'prompt': 'Hi', 'system': 'You help.', **body})
+        response = await self.client.post(f"/anima-manga-maker/projects/{self.project['id']}/assistant", json={'module': 'logline', 'text': 'Hi', 'prompt': 'Hi', 'system': 'You help.', **body})
         if response.content_type == 'application/json':
             return response.status, (await response.json())['error']
         return response.status, [json.loads(line) for line in (await response.text()).splitlines()]
 
     async def test_catalog_pairs_projectors_and_reports_broken_files(self):
-        state = await (await self.client.get('/manga-maker/assistant')).json()
+        state = await (await self.client.get('/anima-manga-maker/assistant')).json()
         self.assertEqual([m['name'] for m in state['models']], ['story.gguf'])
         model = state['models'][0]
         self.assertEqual((model['label'], model['context_length'], model['thinking'], model['projectors']), ('Story 12B', 8192, True, ['vision/mmproj.gguf']))
@@ -119,12 +119,12 @@ class AssistantTests(unittest.IsolatedAsyncioTestCase):
         status, events = await self.ask(text='Again', prompt='Again', action={'kind': 'logline', 'target': None}, schema={'type': 'object'})
         reply = events[-1]['messages'][1]
         self.assertEqual((json.loads(reply['text']), reply['action']['kind']), ({'title': 'Again'}, 'logline'))
-        chats = await (await self.client.get(f"/manga-maker/projects/{self.project['id']}/assistant")).json()
+        chats = await (await self.client.get(f"/anima-manga-maker/projects/{self.project['id']}/assistant")).json()
         self.assertEqual([m['text'] for m in chats['logline']], ['Hello', 'Hello | images=0 | history=2 | False', 'Again', reply['text']])
         status, events = await self.ask(prompt='fail')
         self.assertEqual(events[-1], {'type': 'error', 'message': 'Model failure', 'loaded': False})
         self.assertEqual(len(self.store.chats(self.project['id'])['logline']), 4)
-        cleared = await (await self.client.delete(f"/manga-maker/projects/{self.project['id']}/assistant/logline")).json()
+        cleared = await (await self.client.delete(f"/anima-manga-maker/projects/{self.project['id']}/assistant/logline")).json()
         self.assertEqual(cleared, {})
 
     async def test_keep_loaded_reuses_process_until_a_workflow_is_queued(self):
@@ -133,7 +133,7 @@ class AssistantTests(unittest.IsolatedAsyncioTestCase):
         status, events = await self.ask()
         self.assertNotIn('loaded', [e['type'] for e in events])
         self.assertIs(self.assistant.RUNTIME.process, process); self.assertEqual(self.unloaded, 1)
-        self.assertTrue((await (await self.client.get('/manga-maker/assistant')).json())['loaded'])
+        self.assertTrue((await (await self.client.get('/anima-manga-maker/assistant')).json())['loaded'])
         self.assertEqual((await self.client.post('/prompt', json={})).status, 200)
         self.assertFalse(self.assistant.RUNTIME.loaded); self.assertIsNotNone(process.returncode)
         self.remaining = 1

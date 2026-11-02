@@ -15,7 +15,7 @@ export async function assistantSettings(host, value, fail) {
             el('option', { value: '', text: empty }), ...items.map(([value, text]) => el('option', { value, text, selected: value === current }))));
         const number = (label, key, range, attrs = {}, help = '') => slider(label, el('input', { type: 'number', value: cfg[key], ...attrs, onchange: e => { if (Number.isFinite(Number(e.target.value))) cfg[key] = Number(e.target.value); } }), range, help);
         host.replaceChildren(
-            state.available ? null : el('p', { class: 'mm-warning', text: 'llama-cpp-python is not installed in ComfyUI\'s Python environment. Install it to use the Story assistant.' }),
+            state.available ? null : el('p', { class: 'amm-warning', text: 'llama-cpp-python is not installed in ComfyUI\'s Python environment. Install it to use the Story assistant.' }),
             el('small', { text: 'Local GGUF language models from models/LLM. Before each answer, ComfyUI models are unloaded; the assistant runs in its own process so its memory is released when it ends.' }),
             select('Language model', state.models.map(m => [m.name, `${m.label} · ${m.name}${m.context_length ? ` · ${m.context_length} ctx` : ''}`]), cfg.model, v => { cfg.model = v; if (!state.models.find(m => m.name === v)?.projectors.includes(cfg.projector)) cfg.projector = ''; }, state.models.length ? 'Select a GGUF model…' : 'No GGUF models found in models/LLM'),
             toggle('Vision · read reference images and pages', el('input', { type: 'checkbox', checked: cfg.vision, onchange: e => { cfg.vision = e.target.checked; render(); } })),
@@ -27,7 +27,7 @@ export async function assistantSettings(host, value, fail) {
             number('Temperature', 'temperature', [0, 2], { min: 0, step: 0.05 }), number('Maximum answer · tokens', 'max_tokens', [128, 8192], { min: 16, step: 64 }),
             model?.thinking ? toggle('Thinking', el('input', { type: 'checkbox', checked: cfg.thinking, onchange: e => { cfg.thinking = e.target.checked; } }), 'Structured proposals always disable thinking.') : null,
             state.loaded ? button('Release loaded model', async () => { try { await request('/assistant/release', {}, 'POST'); state.loaded = false; render(); } catch (error) { fail(error); } }) : null,
-            ...state.errors.map(error => el('small', { class: 'mm-warning', text: error })));
+            ...state.errors.map(error => el('small', { class: 'amm-warning', text: error })));
     };
     render();
 }
@@ -60,62 +60,62 @@ export class Assistant {
     }
     render() {
         const module = this.view.module, messages = this.chats[module] || [], busy = !!this.pending;
-        const header = el('header', { class: 'mm-assistant-header' }, el('h2', { text: `Assistant · ${modules[module]}` }),
+        const header = el('header', { class: 'amm-assistant-header' }, el('h2', { text: `Assistant · ${modules[module]}` }),
             this.state?.loaded ? iconButton('Release loaded model', 'restore', () => this.release(), { disabled: busy, title: 'The model is kept loaded. Release its memory now.' }) : null,
             iconButton('Clear conversation', 'trash', () => this.clear(module), { disabled: busy || !messages.length }));
-        const quick = el('div', { class: 'mm-assistant-actions' }, ...Object.entries(actions).filter(([, a]) => a.module === module).map(([kind, action]) => {
+        const quick = el('div', { class: 'amm-assistant-actions' }, ...Object.entries(actions).filter(([, a]) => a.module === module).map(([kind, action]) => {
             const reason = this.reason(action);
             return button(action.label, () => this.run(kind), { disabled: busy || !!reason, title: reason || action.label });
         }));
-        this.list = el('div', { class: 'mm-assistant-messages', 'aria-live': 'polite' }, ...messages.map(m => this.message(m)));
-        if (!messages.length && !busy) this.list.append(el('p', { class: 'mm-assistant-empty', text: this.reason() || 'Ask about this module or use a quick action. Proposals appear here for review before they change your story.' }));
+        this.list = el('div', { class: 'amm-assistant-messages', 'aria-live': 'polite' }, ...messages.map(m => this.message(m)));
+        if (!messages.length && !busy) this.list.append(el('p', { class: 'amm-assistant-empty', text: this.reason() || 'Ask about this module or use a quick action. Proposals appear here for review before they change your story.' }));
         if (busy && this.pending.module === module) {
-            this.streamText = el('div', { class: 'mm-message-text', text: this.pending.answer });
+            this.streamText = el('div', { class: 'amm-message-text', text: this.pending.answer });
             this.streamStatus = el('small', { text: [this.pending.status, this.pending.context].filter(Boolean).join(' · ') });
-            this.list.append(this.message({ role: 'user', text: this.pending.text, images: this.pending.images }), el('article', { class: 'mm-message mm-message-assistant mm-message-pending' }, this.streamStatus, this.streamText));
+            this.list.append(this.message({ role: 'user', text: this.pending.text, images: this.pending.images }), el('article', { class: 'amm-message amm-message-assistant amm-message-pending' }, this.streamStatus, this.streamText));
         }
         const input = el('textarea', { value: this.drafts[module] || '', rows: 3, placeholder: 'Ask the assistant… Enter sends, Shift+Enter adds a line', 'aria-label': 'Message to the assistant',
             oninput: e => this.drafts[module] = e.target.value,
             onkeydown: e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); this.chat(); } } });
         const attached = this.attachments[module] ||= [];
-        const composer = el('div', { class: 'mm-assistant-composer' },
-            attached.length ? el('div', { class: 'mm-assistant-attachments' }, ...attached.map(id => el('div', {}, el('img', { src: assetUrl(this.project.id, id, true), alt: '' }),
+        const composer = el('div', { class: 'amm-assistant-composer' },
+            attached.length ? el('div', { class: 'amm-assistant-attachments' }, ...attached.map(id => el('div', {}, el('img', { src: assetUrl(this.project.id, id, true), alt: '' }),
                 iconButton('Remove image', 'clear', () => { attached.splice(attached.indexOf(id), 1); this.render(); })))) : null,
-            input, el('div', { class: 'mm-row' }, iconButton('Attach project images', 'image', () => this.attach(module), { disabled: busy || !this.vision, title: this.vision ? 'Attach project images' : 'Enable vision in Settings to attach images' }),
-                busy ? button('Stop', () => this.cancel(), { class: 'mm-danger' }) : button('Send', () => this.chat(), { class: 'mm-primary', disabled: !!this.reason() })));
+            input, el('div', { class: 'amm-row' }, iconButton('Attach project images', 'image', () => this.attach(module), { disabled: busy || !this.vision, title: this.vision ? 'Attach project images' : 'Enable vision in Settings to attach images' }),
+                busy ? button('Stop', () => this.cancel(), { class: 'amm-danger' }) : button('Send', () => this.chat(), { class: 'amm-primary', disabled: !!this.reason() })));
         this.host.replaceChildren(header, quick, this.list, composer);
         this.list.scrollTop = this.list.scrollHeight;
     }
     message(m) {
-        const node = el('article', { class: `mm-message mm-message-${m.role}` });
-        if (m.images?.length) node.append(el('div', { class: 'mm-assistant-attachments' }, ...m.images.map(id => el('img', { src: assetUrl(this.project.id, id, true), alt: '' }))));
+        const node = el('article', { class: `amm-message amm-message-${m.role}` });
+        if (m.images?.length) node.append(el('div', { class: 'amm-assistant-attachments' }, ...m.images.map(id => el('img', { src: assetUrl(this.project.id, id, true), alt: '' }))));
         if (m.role === 'assistant' && m.action && actions[m.action.kind]) return this.proposal(node, m);
-        node.append(el('div', { class: 'mm-message-text', text: m.text }));
-        if (m.role === 'assistant') node.append(el('div', { class: 'mm-row' }, iconButton('Copy', 'copy', () => navigator.clipboard.writeText(m.text))));
+        node.append(el('div', { class: 'amm-message-text', text: m.text }));
+        if (m.role === 'assistant') node.append(el('div', { class: 'amm-row' }, iconButton('Copy', 'copy', () => navigator.clipboard.writeText(m.text))));
         return node;
     }
     proposal(node, m) {
         const action = actions[m.action.kind];
         let data;
-        try { data = JSON.parse(m.text); } catch { node.append(el('strong', { text: action.label }), el('div', { class: 'mm-message-text', text: m.text }), el('small', { class: 'mm-warning', text: 'The answer is not valid JSON and cannot be applied.' })); return node; }
+        try { data = JSON.parse(m.text); } catch { node.append(el('strong', { text: action.label }), el('div', { class: 'amm-message-text', text: m.text }), el('small', { class: 'amm-warning', text: 'The answer is not valid JSON and cannot be applied.' })); return node; }
         const applied = this.applied.has(m.id);
         const apply = button('Apply to story', () => {
             const before = structuredClone(this.view.story);
             try { action.apply(this.view.story, data, m.action.target); } catch (error) { this.studio.fail(error); return; }
             this.applied.set(m.id, before); this.view.changed(); this.view.render();
-        }, { class: 'mm-primary', hidden: applied });
+        }, { class: 'amm-primary', hidden: applied });
         const undo = button('Undo', () => {
             const story = this.view.story; for (const key of Object.keys(story)) delete story[key]; Object.assign(story, this.applied.get(m.id));
             this.applied.delete(m.id); this.view.changed(); this.view.render();
         }, { hidden: !applied });
-        node.classList.add('mm-proposal');
-        node.append(el('strong', { text: action.label }), el('pre', { class: 'mm-message-text', text: readable(data) }), el('div', { class: 'mm-row' }, apply, undo,
+        node.classList.add('amm-proposal');
+        node.append(el('strong', { text: action.label }), el('pre', { class: 'amm-message-text', text: readable(data) }), el('div', { class: 'amm-row' }, apply, undo,
             iconButton('Copy JSON', 'copy', () => navigator.clipboard.writeText(JSON.stringify(data, null, 2)))));
         return node;
     }
     attach(module) {
         const attached = this.attachments[module];
-        const picker = el('div', { class: 'mm-asset-picker' }, ...this.project.assets.filter(a => !a.deleted && !a.missing).map(a => this.studio.assetPickerItem(a, () => {
+        const picker = el('div', { class: 'amm-asset-picker' }, ...this.project.assets.filter(a => !a.deleted && !a.missing).map(a => this.studio.assetPickerItem(a, () => {
             if (!attached.includes(a.id)) attached.push(a.id);
             this.render();
         })));
@@ -139,7 +139,7 @@ export class Assistant {
         this.controller = new AbortController(); this.render();
         try {
             await this.studio.flush();
-            const response = await api.fetchApi(`/manga-maker/projects/${project}/assistant`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: this.controller.signal,
+            const response = await api.fetchApi(`/anima-manga-maker/projects/${project}/assistant`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: this.controller.signal,
                 body: JSON.stringify({ module, system: systemPrompt(this.view.story, module, this.view.ui), ...body }) });
             if (!response.ok) { let data = {}; try { data = await response.json(); } catch {} throw new Error(data.error || `Server: ${response.status}`); }
             const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
@@ -178,6 +178,6 @@ export class Assistant {
         const dialog = this.studio.modal('Clear conversation', el('p', { text: `Remove the ${modules[module]} conversation? Your story content is not changed.` }),
             button('Cancel', () => dialog.close()), button('Clear', async () => {
                 try { this.chats = await request(`/projects/${this.project.id}/assistant/${module}`, undefined, 'DELETE'); dialog.close(); this.render(); } catch (error) { this.studio.fail(error); }
-            }, { class: 'mm-danger' }));
+            }, { class: 'amm-danger' }));
     }
 }

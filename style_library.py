@@ -61,7 +61,7 @@ def stylebook():
         raise FileNotFoundError(2, 'Install the Stylebook custom node', str(stylebook_root))
     if not _stylebook:
         # Stylebook's data package also merges user_styles.json; load it under a private name so it does not touch the node's own modules.
-        name = 'manga_maker_stylebook_data'
+        name = 'anima_manga_maker_stylebook_data'
         spec = importlib.util.spec_from_file_location(name, stylebook_root / 'data' / '__init__.py', submodule_search_locations=[str(stylebook_root / 'data')])
         sys.modules[name] = importlib.util.module_from_spec(spec); spec.loader.exec_module(sys.modules[name])
         styles = importlib.import_module(f'{name}.styles').STYLES

@@ -12,7 +12,7 @@ Saving over a drawing or refining an asset creates a new version and preserves t
 
 ## Storage and migration
 
-The initial root is `manga-maker-projects/` under ComfyUI's user directory. **Settings** lets you change it. Each project folder contains `references/`, `panels/`, `pages/` and `project.json`, with relative paths, assets, versions, layouts, presets and jobs. The `manga-maker-settings.json` file in the user directory stores global settings.
+The initial root is `anima-manga-maker-projects/` under ComfyUI's user directory. **Settings** lets you change it. Each project folder contains `references/`, `panels/`, `pages/` and `project.json`, with relative paths, assets, versions, layouts, presets and jobs. The `anima-manga-maker-settings.json` file in the user directory stores global settings.
 
 Explicit operation or preset fields take priority; other fields inherit the engine's global model configuration, resolved again when the configuration is used. Additional LoRA lists remain independent per operation, including order and model/encoder strengths; Krea2 Edit uses model strength only. Configuration and presets can be imported/exported as JSON.
 

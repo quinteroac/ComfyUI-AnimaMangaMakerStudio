@@ -1,4 +1,4 @@
-// Manga Maker Studio MCP server over stdio. It only talks to the local ComfyUI server in MANGA_MAKER_URL.
+// Anima Manga Maker Studio MCP server over stdio. It only talks to the local ComfyUI server in MANGA_MAKER_URL.
 import readline from 'node:readline';
 import { actions, modules, normalizeStory, readable, scriptMarkdown, storyContext } from '../web/story-data.js';
 
@@ -6,7 +6,7 @@ const base = (process.env.MANGA_MAKER_URL || 'http://127.0.0.1:8188').replace(/\
 const identifier = (value, label) => { if (!/^[0-9a-f]{32}$/.test(value)) throw new Error(`Invalid ${label} identifier`); return value; };
 
 async function api(path, body, method = 'GET') {
-    const response = await fetch(`${base}/manga-maker${path}`, body === undefined ? { method } : { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const response = await fetch(`${base}/anima-manga-maker${path}`, body === undefined ? { method } : { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (!response.ok) {
         const data = await response.json().catch(() => ({}));
         throw Object.assign(new Error(data.error || `ComfyUI answered ${response.status} for ${path}`), { status: response.status });
@@ -46,7 +46,7 @@ const input = (properties = {}, required = []) => ({ type: 'object', properties,
 const read = { readOnlyHint: true, openWorldHint: false };
 
 const tools = {
-    list_projects: { description: 'List Manga Maker Studio projects, most recently updated first.', annotations: read, inputSchema: input(),
+    list_projects: { description: 'List Anima Manga Maker Studio projects, most recently updated first.', annotations: read, inputSchema: input(),
         run: async () => text(await json('/projects')) },
     get_project: { description: 'Summarize a project: revision, asset counts, page layouts, active jobs and story size.', annotations: read, inputSchema: input({ project: projectInput }, ['project']),
         run: async ({ project: id }) => {
@@ -90,8 +90,8 @@ for (const [name, action] of Object.entries(actions)) {
 }
 
 const handlers = {
-    initialize: params => ({ protocolVersion: params.protocolVersion || '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'manga-maker-studio', version: '0.2.0-alpha' },
-        instructions: 'Tools for Manga Maker Studio projects on the local ComfyUI server. Start with list_projects. Read get_story before using a story_* tool; those tools write the story.' }),
+    initialize: params => ({ protocolVersion: params.protocolVersion || '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'anima-manga-maker-studio', version: '0.2.0-alpha' },
+        instructions: 'Tools for Anima Manga Maker Studio projects on the local ComfyUI server. Start with list_projects. Read get_story before using a story_* tool; those tools write the story.' }),
     ping: () => ({}),
     'tools/list': () => ({ tools: Object.entries(tools).map(([name, { description, inputSchema, annotations }]) => ({ name, description, inputSchema, annotations })) }),
     'tools/call': async ({ name, arguments: args = {} }) => {

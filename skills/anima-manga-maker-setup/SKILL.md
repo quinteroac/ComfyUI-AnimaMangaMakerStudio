@@ -1,25 +1,25 @@
 ---
-name: manga-maker-setup
-description: Install, configure, or diagnose Manga Maker Studio in an existing ComfyUI installation, including feature-specific custom nodes, model selection and settings inheritance. Use for agent-assisted setup of this plugin, not general ComfyUI administration or artwork generation.
+name: anima-manga-maker-setup
+description: Install, configure, or diagnose Anima Manga Maker Studio in an existing ComfyUI installation, including feature-specific custom nodes, model selection and settings inheritance. Use for agent-assisted setup of this plugin, not general ComfyUI administration or artwork generation.
 ---
 
-# Manga Maker Studio setup
+# Anima Manga Maker Studio setup
 
 Make the user's requested Studio features usable in their actual ComfyUI installation. Work within their existing authorization for installation and configuration; this skill does not authorize model downloads, restarts, generation or changes to unrelated software by itself.
 
 ## Establish the target
 
-Discover the ComfyUI checkout or installation, its active Python executable, server URL and Manga Maker Studio checkout from the workspace, running process or available ComfyUI tools. Do not assume port 8188, a `.venv` name, Unix paths, or that terminal `python` runs the server. Portable installations may use embedded Python. If multiple plausible installations remain, ask which one to configure before changing either.
+Discover the ComfyUI checkout or installation, its active Python executable, server URL and Anima Manga Maker Studio checkout from the workspace, running process or available ComfyUI tools. Do not assume port 8188, a `.venv` name, Unix paths, or that terminal `python` runs the server. Portable installations may use embedded Python. If multiple plausible installations remain, ask which one to configure before changing either.
 
 Identify the requested features from the task. If the user only asks for basic setup, configure projects, drawing and page layout first and report AI options; do not interpret it as installing every model family. Reuse installed models, user-selected paths and existing settings. Ask only for missing choices that materially affect installation, storage, downloads or compatibility.
 
-Locate the repository's `docs/installation.md` and `docs/configuration.md`; read the sections for the chosen features. They remain authoritative for package URLs and configuration behavior. A copied skill does not contain the plugin: locate or clone `https://github.com/quinteroac/ComfyUI-MangaMakerStudio` as part of an authorized plugin installation. Read `docs/drawing.md` for Sketch to Art or manga conversion. Do not resolve repository docs relative to the skill's parent if the skill was installed elsewhere.
+Locate the repository's `docs/installation.md` and `docs/configuration.md`; read the sections for the chosen features. They remain authoritative for package URLs and configuration behavior. A copied skill does not contain the plugin: locate or clone `https://github.com/quinteroac/ComfyUI-AnimaMangaMakerStudio` as part of an authorized plugin installation. Read `docs/drawing.md` for Sketch to Art or manga conversion. Do not resolve repository docs relative to the skill's parent if the skill was installed elsewhere.
 
 ## Inspect before changing
 
 Inspect local changes before updating an existing checkout. Preserve them; do not reset, overwrite, switch branches, update ComfyUI core or upgrade unrelated nodes to make setup easier. Install missing feature dependencies alongside the plugin, not inside its directory, and use the same Python environment as ComfyUI for their declared requirements. Do not clone another copy over an existing installation.
 
-When the server is available, inspect `/object_info`, `/queue`, `/manga-maker/settings` and, for model setup, `/manga-maker/models` on the confirmed server. Existing ComfyUI connectors may provide equivalent inventory. Read [API and settings contracts](references/api.md) before HTTP configuration or interpreting missing routes.
+When the server is available, inspect `/object_info`, `/queue`, `/anima-manga-maker/settings` and, for model setup, `/anima-manga-maker/models` on the confirmed server. Existing ComfyUI connectors may provide equivalent inventory. Read [API and settings contracts](references/api.md) before HTTP configuration or interpreting missing routes.
 
 Distinguish missing packages, packages installed but not yet loaded, missing node versions, missing registered filenames and incompatible model families. Installing weights cannot fix a missing custom node. Do not infer weight compatibility solely from a filename substring.
 

@@ -16,7 +16,7 @@ export function mangaControls(studio, kind, changed) {
         if (JSON.stringify(cfg) !== before) studio.saveSoon();
         element.replaceChildren();
         const update = () => { changed(); studio.presetChanged(scope, element); };
-        const presets = el('div', { class: 'mm-row' }); studio.presets(presets, scope, cfg, {}, () => { render(); changed(); }); element.append(presets);
+        const presets = el('div', { class: 'amm-row' }); studio.presets(presets, scope, cfg, {}, () => { render(); changed(); }); element.append(presets);
         const select = (label, key, values, rerender = false) => {
             const input = el('select', { 'aria-label': label, onchange: e => { cfg[key] = e.target.value; update(); if (rerender) render(); } }, ...values.map(([value, text]) => el('option', { value, text })));
             input.value = cfg[key]; return field(label, input);

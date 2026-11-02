@@ -2,17 +2,17 @@
 
 [Documentation](README.md) · [Project README](../README.md)
 
-An agent with access to your ComfyUI environment can install Manga Maker Studio, identify the dependencies needed for your chosen features, select existing compatible weights and configure the plugin. The repository includes the reusable [manga-maker-setup skill](../skills/manga-maker-setup/SKILL.md) for this work.
+An agent with access to your ComfyUI environment can install Anima Manga Maker Studio, identify the dependencies needed for your chosen features, select existing compatible weights and configure the plugin. The repository includes the reusable [anima-manga-maker-setup skill](../skills/anima-manga-maker-setup/SKILL.md) for this work.
 
 The skill supplies plugin-specific instructions; it is not an installer that runs automatically. Your agent still needs the appropriate filesystem, process and local server access. A chat without access to your machine can explain setup, but cannot apply or verify local changes.
 
 ## Using the skill
 
-If your agent accepts a skill file directly, ask it to read `skills/manga-maker-setup/SKILL.md` from this checkout and use it for the setup request. It can read the [API reference](../skills/manga-maker-setup/references/api.md) when needed. If the plugin has not been cloned, give the agent the [repository URL](https://github.com/quinteroac/ComfyUI-MangaMakerStudio) and ask it to inspect the included skill as part of installation.
+If your agent accepts a skill file directly, ask it to read `skills/anima-manga-maker-setup/SKILL.md` from this checkout and use it for the setup request. It can read the [API reference](../skills/anima-manga-maker-setup/references/api.md) when needed. If the plugin has not been cloned, give the agent the [repository URL](https://github.com/quinteroac/ComfyUI-AnimaMangaMakerStudio) and ask it to inspect the included skill as part of installation.
 
-For agents with a skill library, install or copy the complete `skills/manga-maker-setup/` folder into the directory supported by that agent. Keep `SKILL.md`, `references/` and `agents/` together. The folder includes standard skill frontmatter and optional UI metadata; its instructions do not depend on a particular MCP connector. Skill registration and discovery depend on the agent you use. Copying the skill does not install the ComfyUI plugin itself.
+For agents with a skill library, install or copy the complete `skills/anima-manga-maker-setup/` folder into the directory supported by that agent. Keep `SKILL.md`, `references/` and `agents/` together. The folder includes standard skill frontmatter and optional UI metadata; its instructions do not depend on a particular MCP connector. Skill registration and discovery depend on the agent you use. Copying the skill does not install the ComfyUI plugin itself.
 
-When the skill is registered and your agent supports named invocation, use `$manga-maker-setup`. Otherwise, refer to its file path explicitly. The skill finds the plugin's checkout and reads its documentation there, so it can also be used from a separately installed skill folder.
+When the skill is registered and your agent supports named invocation, use `$anima-manga-maker-setup`. Otherwise, refer to its file path explicitly. The skill finds the plugin's checkout and reads its documentation there, so it can also be used from a separately installed skill folder.
 
 ## What to tell your agent
 
@@ -20,13 +20,13 @@ Useful context includes the ComfyUI location, server URL if already running, the
 
 Example requests:
 
-> Use `$manga-maker-setup` to configure Manga Maker Studio in my existing ComfyUI installation for projects, Klecks drawing and page layout. Reuse existing settings and do not download models.
+> Use `$anima-manga-maker-setup` to configure Anima Manga Maker Studio in my existing ComfyUI installation for projects, Klecks drawing and page layout. Reuse existing settings and do not download models.
 
-> Read `skills/manga-maker-setup/SKILL.md` and configure Art to Manga Panel with Manga-Lite. Install MangaScreen if missing, keep pen extraction disabled and leave my existing model settings intact. Restart the confirmed ComfyUI instance only when its queue is idle.
+> Read `skills/anima-manga-maker-setup/SKILL.md` and configure Art to Manga Panel with Manga-Lite. Install MangaScreen if missing, keep pen extraction disabled and leave my existing model settings intact. Restart the confirmed ComfyUI instance only when its queue is idle.
 
-> Use `$manga-maker-setup` to configure Sketch to Art using my installed Krea weights and LoRAs. Check the required nodes and encoder type. Report any missing weights before downloading them, and do not run inference.
+> Use `$anima-manga-maker-setup` to configure Sketch to Art using my installed Krea weights and LoRAs. Check the required nodes and encoder type. Report any missing weights before downloading them, and do not run inference.
 
-> Use `$manga-maker-setup` to diagnose my QWEN-Manga configuration. Reuse my installed Turbo weights and verify the model, encoder, VAE and loaded node schemas without changing other engines or generating an image.
+> Use `$anima-manga-maker-setup` to diagnose my QWEN-Manga configuration. Reuse my installed Turbo weights and verify the model, encoder, VAE and loaded node schemas without changing other engines or generating an image.
 
 ## What the agent configures
 

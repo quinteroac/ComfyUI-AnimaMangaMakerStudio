@@ -9,36 +9,36 @@ export function openDrawing(studio, kind, source = null) {
         const dialog = studio.modal(kind === 'references' ? 'New reference drawing' : 'New panel drawing', el('div', {}, field('Drawing name', name),
             sizeControls(size, value => Object.assign(size, value))), button('Start drawing', () => {
                 dialog.close(); drawingEditor(studio, kind, null, name.value, imageDimensions(size));
-            }, { class: 'mm-primary' }));
+            }, { class: 'amm-primary' }));
     } else drawingEditor(studio, kind, source, source.name, { width: source.width, height: source.height });
 }
 
 function drawingEditor(studio, kind, source, drawingName, size) {
     const project = studio.project.id;
-    const iframe = el('iframe', { title: 'Klecks drawing editor', sandbox: 'allow-scripts allow-same-origin allow-downloads', class: 'mm-drawing-frame' });
+    const iframe = el('iframe', { title: 'Klecks drawing editor', sandbox: 'allow-scripts allow-same-origin allow-downloads', class: 'amm-drawing-frame' });
     const name = el('input', { value: drawingName, 'aria-label': 'Drawing name' }), status = el('small', { role: 'status', text: 'Loading Klecks…' });
     const send = (type, data = {}) => iframe.contentWindow?.postMessage({ type, ...data }, location.origin);
-    const save = button('Save to project', () => { exporting = true; save.disabled = true; status.textContent = 'Saving drawing…'; send('manga-drawing-export'); }, { disabled: true, class: 'mm-primary' });
-    const dialog = studio.modal(kind === 'references' ? 'Draw reference · Klecks' : 'Draw panel · Klecks', el('div', { class: 'mm-drawing-body' },
-        el('div', { class: 'mm-toolbar' }, field('Drawing name', name), save, status), iframe));
-    dialog.classList.add('mm-drawing-dialog');
+    const save = button('Save to project', () => { exporting = true; save.disabled = true; status.textContent = 'Saving drawing…'; send('manga-drawing-export'); }, { disabled: true, class: 'amm-primary' });
+    const dialog = studio.modal(kind === 'references' ? 'Draw reference · Klecks' : 'Draw panel · Klecks', el('div', { class: 'amm-drawing-body' },
+        el('div', { class: 'amm-toolbar' }, field('Drawing name', name), save, status), iframe));
+    dialog.classList.add('amm-drawing-dialog');
     let parent = source?.id || null, saving = false, exporting = false, opened = false, dirty = false;
     const art = sketchControls(studio, kind, project, send, () => { save.disabled = saving || exporting || !opened || art.busy; send('manga-drawing-ai-busy', { busy: art.busy }); });
-    const workspace = el('div', { class: 'mm-drawing-workspace' }); iframe.replaceWith(workspace); workspace.append(iframe, art.element);
+    const workspace = el('div', { class: 'amm-drawing-workspace' }); iframe.replaceWith(workspace); workspace.append(iframe, art.element);
     const close = () => {
         if (saving || exporting) return;
         if (!dirty) { dialog.close(); return; }
         const discard = studio.modal('Discard unsaved drawing?', el('p', { text: 'Changes since the last save will be discarded.' }),
-            button('Keep drawing', () => discard.close()), button('Discard changes', () => { discard.close(); dialog.close(); }, { class: 'mm-danger' }));
+            button('Keep drawing', () => discard.close()), button('Discard changes', () => { discard.close(); dialog.close(); }, { class: 'amm-danger' }));
     };
-    dialog.querySelector('.mm-modal-close').replaceWith(iconButton('Close', 'clear', close, { class: 'mm-icon-button mm-modal-close' }));
+    dialog.querySelector('.amm-modal-close').replaceWith(iconButton('Close', 'clear', close, { class: 'amm-icon-button amm-modal-close' }));
     dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
     const abort = new AbortController();
     window.addEventListener('message', async event => {
         if (event.source !== iframe.contentWindow || event.origin !== location.origin || !event.data?.type?.startsWith('manga-drawing-')) return;
         const data = event.data; art.handle(data).catch(error => { status.textContent = error.message; });
         if (data.type === 'manga-drawing-ready') send('manga-drawing-init', { ...size,
-            ...(source?.metadata?.drawing_document ? { psdUrl: api.apiURL(`/manga-maker/projects/${project}/assets/${source.id}/drawing`) } : source ? { imageUrl: assetUrl(project, source.id) } : {}) });
+            ...(source?.metadata?.drawing_document ? { psdUrl: api.apiURL(`/anima-manga-maker/projects/${project}/assets/${source.id}/drawing`) } : source ? { imageUrl: assetUrl(project, source.id) } : {}) });
         else if (data.type === 'manga-drawing-opened') { opened = true; status.textContent = 'Draw with Klecks, then save to your project.'; save.disabled = art.busy; }
         else if (data.type === 'manga-drawing-changed' || data.type === 'manga-drawing-dirty') dirty = true;
         else if (data.type === 'manga-drawing-saving') { exporting = true; save.disabled = true; status.textContent = 'Saving drawing…'; }
@@ -60,5 +60,5 @@ function drawingEditor(studio, kind, source, drawingName, size) {
         }
     }, { signal: abort.signal });
     dialog.addEventListener('close', () => { abort.abort(); art.dispose(); });
-    iframe.src = api.apiURL('/manga-maker/drawing/index.html');
+    iframe.src = api.apiURL('/anima-manga-maker/drawing/index.html');
 }

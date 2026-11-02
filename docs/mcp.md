@@ -9,7 +9,7 @@
 Claude Code:
 
 ```sh
-claude mcp add manga-maker -e MANGA_MAKER_URL=http://127.0.0.1:8188 -- node /path/to/ComfyUI/custom_nodes/ComfyUI-MangaMakerStudio/mcp/server.mjs
+claude mcp add anima-manga-maker -e MANGA_MAKER_URL=http://127.0.0.1:8188 -- node /path/to/ComfyUI/custom_nodes/ComfyUI-AnimaMangaMakerStudio/mcp/server.mjs
 ```
 
 Other clients use the same command and environment in their MCP configuration. If ComfyUI uses HTTPS with a local certificate authority, use the `https://` URL and set `NODE_EXTRA_CA_CERTS` to that authority's certificate; do not disable certificate checks.

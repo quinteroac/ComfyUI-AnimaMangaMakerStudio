@@ -20,7 +20,7 @@ A bubble belongs to the page layout. Its text, tail, fill, border and layer can 
 
 ## Fonts
 
-**Font** includes Sans serif, Serif, Monospace, Handwritten and Display, using local browser/system fonts. **Install font…** lets you add TTF, OTF, WOFF or WOFF2 files from your computer. They are validated in the browser and saved under `manga-maker-fonts/` in ComfyUI's user directory, available across projects. Fonts are not downloaded. When moving layouts to another installation, install the same font files there: the identifier depends on file content, allowing the typeface to be recovered. Export waits for the fonts in use to load.
+**Font** includes Sans serif, Serif, Monospace, Handwritten and Display, using local browser/system fonts. **Install font…** lets you add TTF, OTF, WOFF or WOFF2 files from your computer. They are validated in the browser and saved under `anima-manga-maker-fonts/` in ComfyUI's user directory, available across projects. Fonts are not downloaded. When moving layouts to another installation, install the same font files there: the identifier depends on file content, allowing the typeface to be recovered. Export waits for the fonts in use to load.
 
 ## Layout presets and export
 

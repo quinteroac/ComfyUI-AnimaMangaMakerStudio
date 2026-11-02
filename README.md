@@ -1,8 +1,8 @@
-# Manga Maker Studio
+# Anima Manga Maker Studio
 
 **Version:** 0.2.0-alpha.
 
-Manga Maker Studio extends ComfyUI with a workspace for creating manga: organize references and panels in projects, generate images with Krea2, Qwen, Moss or Anima, edit with Krea2 or Qwen, draw with Klecks, and compose pages with custom panel shapes and dialogue. Open **Manga Maker Studio** from the sidebar or the **Manga Maker** menu while keeping your ComfyUI graph intact.
+Anima Manga Maker Studio extends ComfyUI with a workspace for creating manga: organize references and panels in projects, generate images with Krea2, Qwen, Moss or Anima, edit with Krea2 or Qwen, draw with Klecks, and compose pages with custom panel shapes and dialogue. Open **Anima Manga Maker Studio** from the sidebar or the **Manga Maker** menu while keeping your ComfyUI graph intact.
 
 ## What you can do
 
@@ -15,7 +15,7 @@ Manga Maker Studio extends ComfyUI with a workspace for creating manga: organize
 
 ```sh
 # Run from your ComfyUI directory:
-git clone https://github.com/quinteroac/ComfyUI-MangaMakerStudio.git custom_nodes/ComfyUI-MangaMakerStudio
+git clone https://github.com/quinteroac/ComfyUI-AnimaMangaMakerStudio.git custom_nodes/ComfyUI-AnimaMangaMakerStudio
 ```
 
 Restart ComfyUI when no jobs are active and reload the browser. Drawing, project management and page layout use the bundled editor and ComfyUI's existing Python dependencies. AI features require compatible models and, for some operations, separate custom nodes.
@@ -24,9 +24,9 @@ Restart ComfyUI when no jobs are active and reload the browser. Drawing, project
 
 ## Set up with an agent
 
-You can ask a compatible agent to install and configure the plugin using the included [manga-maker-setup skill](skills/manga-maker-setup/SKILL.md). It helps discover your ComfyUI environment, install the custom nodes needed for your chosen features, reuse compatible weights and preserve existing settings.
+You can ask a compatible agent to install and configure the plugin using the included [anima-manga-maker-setup skill](skills/anima-manga-maker-setup/SKILL.md). It helps discover your ComfyUI environment, install the custom nodes needed for your chosen features, reuse compatible weights and preserve existing settings.
 
-Ask the agent to read `skills/manga-maker-setup/SKILL.md`, or invoke `$manga-maker-setup` after registering the skill with your agent. See [Agent-assisted setup](docs/agent-setup.md) for usage, example requests and access requirements. The skill does not itself grant machine access or authorize downloads, restarts or inference.
+Ask the agent to read `skills/anima-manga-maker-setup/SKILL.md`, or invoke `$anima-manga-maker-setup` after registering the skill with your agent. See [Agent-assisted setup](docs/agent-setup.md) for usage, example requests and access requirements. The skill does not itself grant machine access or authorize downloads, restarts or inference.
 
 ## Documentation
 

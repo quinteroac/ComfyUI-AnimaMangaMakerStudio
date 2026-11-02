@@ -19,17 +19,17 @@ Inspected environment: ComfyUI 0.39.0 and frontend 1.55.14. Uses `app.registerEx
 
 ```sh
 # Run these commands from the ComfyUI directory:
-python -m unittest discover -s custom_nodes/ComfyUI-MangaMakerStudio/tests -v
-node --experimental-default-type=module custom_nodes/ComfyUI-MangaMakerStudio/tests/test_models.mjs
-node --experimental-default-type=module custom_nodes/ComfyUI-MangaMakerStudio/tests/test_story.mjs
-node custom_nodes/ComfyUI-MangaMakerStudio/tests/test_mcp.mjs
-node --experimental-default-type=module custom_nodes/ComfyUI-MangaMakerStudio/tests/test_prompts.mjs /path/object_info.json
-node --experimental-default-type=module custom_nodes/ComfyUI-MangaMakerStudio/tests/test_manga.mjs /path/object_info.json /tmp/manga-screen-graphs.json
-python custom_nodes/ComfyUI-MangaMakerStudio/tests/check_schemas.py /path/object_info.json /tmp/manga-built-prompts.json
+python -m unittest discover -s custom_nodes/ComfyUI-AnimaMangaMakerStudio/tests -v
+node --experimental-default-type=module custom_nodes/ComfyUI-AnimaMangaMakerStudio/tests/test_models.mjs
+node --experimental-default-type=module custom_nodes/ComfyUI-AnimaMangaMakerStudio/tests/test_story.mjs
+node custom_nodes/ComfyUI-AnimaMangaMakerStudio/tests/test_mcp.mjs
+node --experimental-default-type=module custom_nodes/ComfyUI-AnimaMangaMakerStudio/tests/test_prompts.mjs /path/object_info.json
+node --experimental-default-type=module custom_nodes/ComfyUI-AnimaMangaMakerStudio/tests/test_manga.mjs /path/object_info.json /tmp/manga-screen-graphs.json
+python custom_nodes/ComfyUI-AnimaMangaMakerStudio/tests/check_schemas.py /path/object_info.json /tmp/manga-built-prompts.json
 # Install Playwright separately for browser development; it is not a product dependency:
-CHROMIUM_PATH=/path/chromium node --experimental-default-type=module custom_nodes/ComfyUI-MangaMakerStudio/tests/browser.mjs /path/playwright /path/python
-CHROMIUM_PATH=/path/chromium node --experimental-default-type=module custom_nodes/ComfyUI-MangaMakerStudio/tests/browser_sketch.mjs /path/playwright /path/python
-CHROMIUM_PATH=/path/chromium node --experimental-default-type=module custom_nodes/ComfyUI-MangaMakerStudio/tests/browser_story.mjs /path/playwright /path/python
+CHROMIUM_PATH=/path/chromium node --experimental-default-type=module custom_nodes/ComfyUI-AnimaMangaMakerStudio/tests/browser.mjs /path/playwright /path/python
+CHROMIUM_PATH=/path/chromium node --experimental-default-type=module custom_nodes/ComfyUI-AnimaMangaMakerStudio/tests/browser_sketch.mjs /path/playwright /path/python
+CHROMIUM_PATH=/path/chromium node --experimental-default-type=module custom_nodes/ComfyUI-AnimaMangaMakerStudio/tests/browser_story.mjs /path/playwright /path/python
 ```
 
 Sources checked against the installed code: [extensions](https://docs.comfy.org/custom-nodes/js/javascript_overview), [sidebar](https://docs.comfy.org/custom-nodes/js/javascript_sidebar_tabs), [server](https://docs.comfy.org/development/comfyui-server/comms_routes) and [frontend development](https://github.com/Comfy-Org/ComfyUI_frontend/blob/main/docs/extensions/development.md).

@@ -4,7 +4,7 @@
 
 Configure a model family globally, then override individual fields only when an operation needs a different model or sampling setup. Project content, operation settings and global model settings have different lifetimes.
 
-An agent can also apply and verify these settings using the included [manga-maker-setup skill](agent-setup.md), with access to your ComfyUI environment.
+An agent can also apply and verify these settings using the included [anima-manga-maker-setup skill](agent-setup.md), with access to your ComfyUI environment.
 
 ## Where settings apply
 

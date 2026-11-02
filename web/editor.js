@@ -176,24 +176,24 @@ export class PageEditor {
             if ([...document.fonts].some(font => font.family === family && font.status === 'loaded')) continue;
             const font = this.studio.fonts.find(font => font.family === family);
             if (!font) throw new Error('A font used by this page is missing. Install the original font file or choose another font.');
-            const face = new FontFace(family, `url("${api.apiURL(`/manga-maker/fonts/${font.id}`)}")`);
+            const face = new FontFace(family, `url("${api.apiURL(`/anima-manga-maker/fonts/${font.id}`)}")`);
             try { await face.load(); } catch { throw new Error(`Could not load font ${font.name}. Install a valid font file or choose another font.`); }
             document.fonts.add(face);
         }
     }
     build() {
         this.host.replaceChildren();
-        this.toolbar = el('div', { class: 'mm-toolbar', role: 'toolbar', 'aria-label': 'Page tools' });
-        const group = (label, ...buttons) => el('div', { class: 'mm-toolbar-group', role: 'group', 'aria-label': label }, ...buttons);
+        this.toolbar = el('div', { class: 'amm-toolbar', role: 'toolbar', 'aria-label': 'Page tools' });
+        const group = (label, ...buttons) => el('div', { class: 'amm-toolbar-group', role: 'group', 'aria-label': label }, ...buttons);
         this.undoButton = iconButton('↶ Undo', 'undo', () => this.history(-1)); this.redoButton = iconButton('↷ Redo', 'redo', () => this.history(1));
         this.toolbar.append(group('Tools', ...[['select', 'Select', 'pointer'], ['rect', 'Rectangle', 'rectangle'], ['polygon', 'Polygon', 'polygon'], ['vertices', 'Vertices', 'vertices'], ['crop', 'Image framing', 'crop'], ['pan', 'Pan canvas', 'hand']]
             .map(([mode, text, symbol]) => iconButton(text, symbol, () => this.setMode(mode), { 'data-mode': mode, 'aria-pressed': String(mode === this.mode) }))),
             group('Dialogue', iconButton('Add speech bubble', 'speech', () => this.addBubble('speech')), iconButton('Add thought bubble', 'thought', () => this.addBubble('thought'))),
             group('History', this.undoButton, this.redoButton), group('View', iconButton('Fit page', 'fit', () => this.fit()), button('100 %', () => this.scale(1)), iconButton('Center', 'center', () => this.center())));
-        this.viewport = el('div', { class: 'mm-canvas-viewport', tabIndex: 0, 'aria-label': 'Editor. Delete: remove. Control Z: undo. Control Y: redo. Enter: finish polygon. Escape: cancel.' });
-        this.canvas = el('canvas', { class: 'mm-page-canvas' }); this.viewport.append(this.canvas);
-        this.properties = el('aside', { class: 'mm-editor-properties' });
-        this.host.append(this.toolbar, el('div', { class: 'mm-editor-body' }, this.viewport, resizer(this.properties, 'Resize properties', true), this.properties), el('small', { text: 'Drag images into a panel · Delete removes · Ctrl Z / Ctrl Y · Enter finishes polygon · Esc cancels · Ctrl + wheel: zoom', class: 'mm-help' }));
+        this.viewport = el('div', { class: 'amm-canvas-viewport', tabIndex: 0, 'aria-label': 'Editor. Delete: remove. Control Z: undo. Control Y: redo. Enter: finish polygon. Escape: cancel.' });
+        this.canvas = el('canvas', { class: 'amm-page-canvas' }); this.viewport.append(this.canvas);
+        this.properties = el('aside', { class: 'amm-editor-properties' });
+        this.host.append(this.toolbar, el('div', { class: 'amm-editor-body' }, this.viewport, resizer(this.properties, 'Resize properties', true), this.properties), el('small', { text: 'Drag images into a panel · Delete removes · Ctrl Z / Ctrl Y · Enter finishes polygon · Esc cancels · Ctrl + wheel: zoom', class: 'amm-help' }));
         const listen = (name, fn) => this.viewport.addEventListener(name, fn, { signal: this.abort.signal });
         listen('pointerdown', e => this.down(e)); listen('pointermove', e => this.move(e)); listen('pointerup', e => this.up(e));
         listen('pointercancel', () => this.cancel()); listen('dblclick', () => { if (this.mode === 'polygon') this.finishPolygon(); });
@@ -329,9 +329,9 @@ export class PageEditor {
         const range = (label, key, owner, bounds, attrs = {}) => slider(label, control(key, 'number', owner, attrs), bounds);
         const percent = (label, value, apply, attrs = {}) => field(label, el('input', { type: 'number', value: +(value * 100).toFixed(2), step: 0.5, ...attrs,
             onchange: e => { const v = Number(e.target.value) / 100; if (e.target.value !== '' && Number.isFinite(v)) this.change(() => apply(v), false); } }));
-        const grid = (...children) => el('div', { class: 'mm-grid2' }, ...children);
-        const section = (title, ...children) => el('section', { class: 'mm-props-section' }, el('h3', { text: title }), ...children);
-        const guides = (label, key) => el('div', { class: 'mm-field' }, el('span', { text: label }), el('div', { class: 'mm-chips' },
+        const grid = (...children) => el('div', { class: 'amm-grid2' }, ...children);
+        const section = (title, ...children) => el('section', { class: 'amm-props-section' }, el('h3', { text: title }), ...children);
+        const guides = (label, key) => el('div', { class: 'amm-field' }, el('span', { text: label }), el('div', { class: 'amm-chips' },
             ...this.page[key].map((value, i) => button(`${+(value * 100).toFixed(2)} % ×`, () => this.change(() => this.page[key].splice(i, 1)), { 'aria-label': `Remove ${label.toLowerCase()} at ${+(value * 100).toFixed(2)} %` })),
             el('input', { type: 'number', min: 0, max: 100, step: 0.5, placeholder: 'Add %', 'aria-label': `Add ${label.toLowerCase()} · %`,
                 onchange: e => { const value = Number(e.target.value) / 100; if (e.target.value !== '' && Number.isFinite(value)) this.change(() => this.page[key] = [...this.page[key], value].sort((a, b) => a - b)); } })));
@@ -365,9 +365,9 @@ export class PageEditor {
                 }, { 'data-bounds': index }))),
                 el('details', {}, el('summary', { text: `Vertices · ${p.polygon.length}` }),
                     ...p.polygon.map((vertex, i) => grid(...['X', 'Y'].map((axis, a) => percent(`Vertex ${i + 1} ${axis} · %`, vertex[a], v => p.polygon[i][a] = v, { 'data-vertex-index': i, 'data-axis': a })))),
-                    el('div', { class: 'mm-row' }, button('Add vertex', () => this.change(() => { const a = p.polygon[0], b = p.polygon[1]; p.polygon.splice(1, 0, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]); })),
+                    el('div', { class: 'amm-row' }, button('Add vertex', () => this.change(() => { const a = p.polygon[0], b = p.polygon[1]; p.polygon.splice(1, 0, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]); })),
                         button('Remove last vertex', () => { if (p.polygon.length > 3) this.change(() => p.polygon.pop()); }, { disabled: p.polygon.length <= 3 }))),
-                el('div', { class: 'mm-row' }, iconButton('Duplicate panel', 'copy', () => this.duplicate()), iconButton('Delete panel', 'trash', () => this.remove(), { class: 'mm-icon-button mm-danger' }))));
+                el('div', { class: 'amm-row' }, iconButton('Duplicate panel', 'copy', () => this.duplicate()), iconButton('Delete panel', 'trash', () => this.remove(), { class: 'amm-icon-button amm-danger' }))));
         }
         const bubble = this.bubble;
         if (bubble) {
@@ -382,10 +382,10 @@ export class PageEditor {
                 oninput: e => { bubble.text = e.target.value; this.studio.saveSoon(); this.draw(); },
                 onchange: () => { this.commit(textBefore); this.draw(); } });
             const tail = !['caption', 'rounded'].includes(bubble.type);
-            this.properties.append(section('Dialogue / thought box', field('Bubble style', style), field('Bubble text', el('div', { class: 'mm-prompt-field' }, text,
+            this.properties.append(section('Dialogue / thought box', field('Bubble style', style), field('Bubble text', el('div', { class: 'amm-prompt-field' }, text,
                 iconButton('Enhance dialogue', 'sparkles', () => this.studio.action(() => this.studio.run('enhance', 'design', null, 'dialogue', { page: this.page.id, bubble: bubble.id, text: bubble.text })),
                     { 'data-run': 'enhance', disabled: !this.studio.textGeneratorAvailable(), title: 'Enhance dialogue with the global text generator' }))),
-                el('div', { class: 'mm-row' }, field('Font', font), button('Install font…', () => chooseFile('.ttf,.otf,.woff,.woff2', files => this.studio.action(async () => {
+                el('div', { class: 'amm-row' }, field('Font', font), button('Install font…', () => chooseFile('.ttf,.otf,.woff,.woff2', files => this.studio.action(async () => {
                     const file = files[0]; await new FontFace('MangaFontValidation', await file.arrayBuffer()).load();
                     const form = new FormData(); form.append('font', file);
                     const installed = await request('/fonts', form, 'POST'); this.studio.fonts = await request('/fonts');
@@ -403,11 +403,11 @@ export class PageEditor {
                 ...(tail ? [['Tail X · % of box', 'tailX'], ['Tail Y · % of box', 'tailY']].map(([label, key]) => slider(label,
                     el('input', { type: 'number', value: bubble[key] * 100, step: 5, onchange: e => { const value = Number(e.target.value) / 100; if (Number.isFinite(value)) this.change(() => bubble[key] = value, false); } }), [-100, 250])) : []),
                 grid(input('Layer', 'z', 'number', bubble)),
-                el('div', { class: 'mm-row' }, iconButton('Duplicate bubble', 'copy', () => this.duplicate()), iconButton('Delete bubble', 'trash', () => this.remove(), { class: 'mm-icon-button mm-danger' }))));
+                el('div', { class: 'amm-row' }, iconButton('Duplicate bubble', 'copy', () => this.duplicate()), iconButton('Delete bubble', 'trash', () => this.remove(), { class: 'amm-icon-button amm-danger' }))));
         }
-        this.properties.append(page, section('Panels · select', el('div', { class: 'mm-list' }, ...[...this.page.panels].sort((a, b) => a.order - b.order).map(p => button(`${p.order}. ${p.asset ? this.studio.project.assets.find(a => a.id === p.asset)?.name || 'Missing' : 'No image'}`,
+        this.properties.append(page, section('Panels · select', el('div', { class: 'amm-list' }, ...[...this.page.panels].sort((a, b) => a.order - b.order).map(p => button(`${p.order}. ${p.asset ? this.studio.project.assets.find(a => a.id === p.asset)?.name || 'Missing' : 'No image'}`,
             () => { this.selected = p.id; this.props(); this.draw(); }, { 'aria-pressed': String(p.id === this.selected) })))),
-            section('Bubbles · select', el('div', { class: 'mm-list mm-bubble-list' }, ...[...this.page.bubbles].sort((a, b) => a.z - b.z).map((b, i) => button(`${i + 1}. ${b.type} · ${b.text.slice(0, 30)}`,
+            section('Bubbles · select', el('div', { class: 'amm-list amm-bubble-list' }, ...[...this.page.bubbles].sort((a, b) => a.z - b.z).map((b, i) => button(`${i + 1}. ${b.type} · ${b.text.slice(0, 30)}`,
                 () => { this.setMode('select'); this.selected = b.id; this.props(); this.draw(); }, { 'data-bubble-id': b.id, 'aria-pressed': String(b.id === this.selected) })))));
     }
     syncGeometryFields() {

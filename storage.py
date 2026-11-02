@@ -44,7 +44,7 @@ class ProjectStore:
     def __init__(self, settings_path, default_root):
         self.settings_path = Path(settings_path)
         self.default_root = Path(default_root)
-        self.font_directory = self.settings_path.parent / 'manga-maker-fonts'
+        self.font_directory = self.settings_path.parent / 'anima-manga-maker-fonts'
         self.lock = threading.RLock()
 
     def settings(self):

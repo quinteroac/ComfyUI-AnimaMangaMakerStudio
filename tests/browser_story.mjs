@@ -17,26 +17,26 @@ const errors = []; page.on('pageerror', error => errors.push(error.message));
 const captures = process.env.CAPTURES || '/tmp/manga-story-browser'; await fs.mkdir(captures, { recursive: true });
 const project = async () => (await fetch(`${backend.url}/test/project`)).json();
 try {
-    await page.route('**/extensions/ComfyUI-MangaMakerStudio/**', async route => {
+    await page.route('**/extensions/ComfyUI-AnimaMangaMakerStudio/**', async route => {
         const name = new URL(route.request().url()).pathname.split('/').at(-1);
         await route.fulfill({ body: await fs.readFile(path.join(root, 'web', name)), contentType: name.endsWith('.css') ? 'text/css' : 'application/javascript' });
     });
     await page.route(/\/extensions\/?(?:\?.*)?$/, async route => {
-        const response = await route.fetch(); const list = await response.json(); list.push('/extensions/ComfyUI-MangaMakerStudio/extension.js');
+        const response = await route.fetch(); const list = await response.json(); list.push('/extensions/ComfyUI-AnimaMangaMakerStudio/extension.js');
         await route.fulfill({ json: list });
     });
-    await page.route(/\/(?:api\/)?manga-maker\//, async route => {
+    await page.route(/\/(?:api\/)?anima-manga-maker\//, async route => {
         const url = new URL(route.request().url());
         await route.fulfill({ response: await route.fetch({ url: backend.url + url.pathname.replace(/^\/api\//, '/') + url.search }) });
     });
     await page.goto(process.env.COMFY_URL || 'http://127.0.0.1:8188', { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await page.waitForFunction(() => { try { return !!window.comfyAPI?.app?.app?.graph && window.comfyAPI.app.app.extensions.some(e => e.name === 'MangaMaker.Studio'); } catch { return false; } }, { timeout: 60000 });
+    await page.waitForFunction(() => { try { return !!window.comfyAPI?.app?.app?.graph && window.comfyAPI.app.app.extensions.some(e => e.name === 'AnimaMangaMaker.Studio'); } catch { return false; } }, { timeout: 60000 });
     await page.waitForTimeout(1500);
-    await page.evaluate(() => window.comfyAPI.app.app.extensions.find(e => e.name === 'MangaMaker.Studio').commands[0].function());
-    const studio = page.locator('.mm-studio'); await studio.waitFor();
+    await page.evaluate(() => window.comfyAPI.app.app.extensions.find(e => e.name === 'AnimaMangaMaker.Studio').commands[0].function());
+    const studio = page.locator('.amm-studio'); await studio.waitFor();
     await studio.getByRole('combobox', { name: 'Active project' }).selectOption(backend.project);
     await studio.getByRole('navigation', { name: 'Workspaces' }).getByRole('button', { name: 'Story', exact: true }).click();
-    const story = studio.locator('.mm-story'), assistant = story.locator('.mm-assistant');
+    const story = studio.locator('.amm-story'), assistant = story.locator('.amm-assistant');
     await assistant.getByText('Select a GGUF language model in Settings.').waitFor();
     assert.ok(await assistant.getByRole('button', { name: 'Propose logline and synopsis' }).isDisabled());
 
@@ -47,12 +47,12 @@ try {
     await section.getByLabel('Vision projector (mmproj)').selectOption('mmproj.gguf');
     assert.equal(await section.getByRole('switch', { name: 'Keep model loaded' }).isChecked(), false);
     await settings.getByRole('button', { name: 'Save global settings' }).click(); await settings.waitFor({ state: 'detached' });
-    assert.deepEqual((await (await fetch(`${backend.url}/manga-maker/settings`)).json()).assistant,
+    assert.deepEqual((await (await fetch(`${backend.url}/anima-manga-maker/settings`)).json()).assistant,
         { model: 'story-writer.gguf', projector: 'mmproj.gguf', vision: true, keep_loaded: false, n_ctx: 16384, n_gpu_layers: -1, temperature: 0.8, top_p: 0.95, max_tokens: 2048, thinking: false });
 
     await story.getByLabel('Title', { exact: true }).fill('Kitsune Run');
     await assistant.getByRole('button', { name: 'Propose logline and synopsis' }).click();
-    const proposal = assistant.locator('.mm-proposal').last(); await proposal.waitFor();
+    const proposal = assistant.locator('.amm-proposal').last(); await proposal.waitFor();
     assert.match(await proposal.innerText(), /Synopsis: Sample synopsis/);
     await proposal.getByRole('button', { name: 'Apply to story' }).click();
     assert.equal(await story.getByLabel('Synopsis', { exact: true }).inputValue(), 'Sample synopsis');
@@ -67,66 +67,66 @@ try {
 
     const tabs = story.getByRole('navigation', { name: 'Story modules' });
     await tabs.getByRole('button', { name: 'Characters' }).click();
-    assert.equal(await assistant.locator('.mm-message').count(), 0);
+    assert.equal(await assistant.locator('.amm-message').count(), 0);
     await story.getByRole('button', { name: 'New character' }).click();
     await story.getByLabel('Name', { exact: true }).fill('Aiko');
     await story.getByLabel('Visual prompt', { exact: true }).fill('Fennec ears, long blonde wavy hair, blue eyes, big fluffy tail');
     assert.ok(await assistant.getByRole('button', { name: 'Describe from reference images' }).isDisabled());
     await story.getByRole('button', { name: 'Choose portrait' }).click();
     const picker = studio.getByRole('dialog', { name: 'Character portrait' }); await picker.locator('button[data-asset-id]').first().click(); await picker.waitFor({ state: 'detached' });
-    await page.waitForFunction(() => [...document.querySelectorAll('.mm-character-card img, .mm-story-thumb img')].every(img => img.complete && img.naturalWidth > 0), { timeout: 5000 });
+    await page.waitForFunction(() => [...document.querySelectorAll('.amm-character-card img, .amm-story-thumb img')].every(img => img.complete && img.naturalWidth > 0), { timeout: 5000 });
     await assistant.getByRole('button', { name: 'Describe from reference images' }).click();
-    const described = assistant.locator('.mm-proposal').last(); await described.waitFor();
-    assert.equal(await assistant.locator('.mm-message-user').last().locator('img').count(), 1);
+    const described = assistant.locator('.amm-proposal').last(); await described.waitFor();
+    assert.equal(await assistant.locator('.amm-message-user').last().locator('img').count(), 1);
     await described.getByRole('button', { name: 'Apply to story' }).click();
     assert.equal(await story.getByLabel('Appearance', { exact: true }).inputValue(), 'Sample appearance');
     await assistant.getByRole('button', { name: 'Create a character card' }).click();
-    await assistant.locator('.mm-proposal').last().getByRole('button', { name: 'Apply to story' }).click();
-    assert.equal(await story.locator('.mm-character-card').count(), 2);
-    await story.locator('.mm-character-card').first().click();
+    await assistant.locator('.amm-proposal').last().getByRole('button', { name: 'Apply to story' }).click();
+    assert.equal(await story.locator('.amm-character-card').count(), 2);
+    await story.locator('.amm-character-card').first().click();
     await story.getByRole('button', { name: 'Generate reference sheet' }).click();
-    const references = studio.locator('.mm-references');
+    const references = studio.locator('.amm-references');
     await references.getByLabel('Appearance', { exact: true }).waitFor({ state: 'attached' });
     assert.equal(await references.getByLabel('Appearance', { exact: true }).inputValue(), 'Sample visual_prompt');
     await studio.getByRole('navigation', { name: 'Workspaces' }).getByRole('button', { name: 'Story', exact: true }).click();
-    await page.waitForFunction(() => { const images = [...document.querySelectorAll('.mm-story img')]; return images.length >= 3 && images.every(img => img.complete && img.naturalWidth > 0); }, { timeout: 5000 });
+    await page.waitForFunction(() => { const images = [...document.querySelectorAll('.amm-story img')]; return images.length >= 3 && images.every(img => img.complete && img.naturalWidth > 0); }, { timeout: 5000 });
     await page.screenshot({ path: `${captures}/story-characters.png` });
 
     await tabs.getByRole('button', { name: 'Plot & Structure' }).click();
     await story.getByLabel('Structure template', { exact: true }).selectOption('kishotenketsu');
     await story.getByRole('button', { name: 'Apply template' }).click();
     await studio.getByRole('dialog', { name: 'Apply structure template' }).getByRole('button', { name: 'Apply', exact: true }).click();
-    assert.equal(await story.locator('.mm-plot-act').count(), 4);
-    await story.locator('.mm-plot-beat').first().getByRole('button', { name: 'Aiko' }).click();
-    assert.equal(await story.locator('.mm-plot-beat').first().getByRole('button', { name: 'Aiko' }).getAttribute('aria-pressed'), 'true');
+    assert.equal(await story.locator('.amm-plot-act').count(), 4);
+    await story.locator('.amm-plot-beat').first().getByRole('button', { name: 'Aiko' }).click();
+    assert.equal(await story.locator('.amm-plot-beat').first().getByRole('button', { name: 'Aiko' }).getAttribute('aria-pressed'), 'true');
     await page.screenshot({ path: `${captures}/story-plot.png` });
 
     await tabs.getByRole('button', { name: 'Script Editor' }).click();
     assert.ok(await assistant.getByRole('button', { name: 'Break selected chapter into pages' }).isDisabled());
     await story.getByRole('button', { name: 'Add chapter' }).click();
     await assistant.getByRole('button', { name: 'Break selected chapter into pages' }).click();
-    await assistant.locator('.mm-proposal').last().getByRole('button', { name: 'Apply to story' }).click();
-    await story.locator('.mm-script-page').first().click();
-    const panel = story.locator('.mm-script-panel').first();
+    await assistant.locator('.amm-proposal').last().getByRole('button', { name: 'Apply to story' }).click();
+    await story.locator('.amm-script-page').first().click();
+    const panel = story.locator('.amm-script-panel').first();
     assert.equal(await panel.getByLabel('Line text').inputValue(), 'Sample text');
     await panel.getByRole('button', { name: '+ Thought' }).click();
-    await story.locator('.mm-script-panel').first().getByLabel('Line text').last().fill('Can I win?');
-    await story.locator('.mm-script-panel').first().getByLabel('Speaker').last().fill('Aiko');
-    await story.locator('.mm-script-panel').first().getByRole('button', { name: 'Link panel image' }).click();
+    await story.locator('.amm-script-panel').first().getByLabel('Line text').last().fill('Can I win?');
+    await story.locator('.amm-script-panel').first().getByLabel('Speaker').last().fill('Aiko');
+    await story.locator('.amm-script-panel').first().getByRole('button', { name: 'Link panel image' }).click();
     const panelPicker = studio.getByRole('dialog', { name: 'Link panel image' }); await panelPicker.locator('button[data-asset-id]').first().click(); await panelPicker.waitFor({ state: 'detached' });
     await story.getByRole('button', { name: 'Add panel' }).click();
-    const linked = story.locator('.mm-script-panel').first().locator('.mm-story-thumb-large');
-    await page.waitForFunction(() => { const img = document.querySelector('.mm-story-thumb-large img'); return img?.complete && img.naturalWidth > 0; });
+    const linked = story.locator('.amm-script-panel').first().locator('.amm-story-thumb-large');
+    await page.waitForFunction(() => { const img = document.querySelector('.amm-story-thumb-large img'); return img?.complete && img.naturalWidth > 0; });
     const [imageBox, unlinkBox] = [await linked.locator('img').boundingBox(), await linked.getByRole('button', { name: 'Unlink panel image' }).boundingBox()];
     assert.ok(unlinkBox.y >= imageBox.y + imageBox.height, 'unlink button sits below the image');
     assert.ok(imageBox.width >= 250);
     await linked.scrollIntoViewIfNeeded();
     await page.screenshot({ path: `${captures}/story-script.png` });
-    await story.locator('.mm-script-panel').first().getByRole('button', { name: 'Send to Panels' }).click();
-    assert.equal(await studio.locator('.mm-panels').getByLabel('Subject', { exact: true }).inputValue(), 'Sample description');
+    await story.locator('.amm-script-panel').first().getByRole('button', { name: 'Send to Panels' }).click();
+    assert.equal(await studio.locator('.amm-panels').getByLabel('Subject', { exact: true }).inputValue(), 'Sample description');
     await studio.getByRole('navigation', { name: 'Workspaces' }).getByRole('button', { name: 'Story', exact: true }).click();
     await story.getByRole('button', { name: 'Create page layout' }).click();
-    await studio.locator('.mm-design .mm-page-canvas').waitFor();
+    await studio.locator('.amm-design .amm-page-canvas').waitFor();
     await page.waitForTimeout(400);
     await page.screenshot({ path: `${captures}/story-layout.png` });
     await page.waitForTimeout(700);
@@ -146,7 +146,7 @@ try {
     await page.waitForTimeout(700);
     assert.equal((await project()).workspace.design.pages.filter(p => p.id === scriptPage.layout).length, 1);
     const current = await project();
-    const external = await fetch(`${backend.url}/manga-maker/projects/${current.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    const external = await fetch(`${backend.url}/anima-manga-maker/projects/${current.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ story: { ...current.story, logline: { ...current.story.logline, title: 'Edited outside' } }, revision: current.revision }) });
     assert.equal(external.status, 200);
     await studio.getByText('The project was changed outside Studio and has been reloaded.').waitFor();

@@ -223,7 +223,7 @@ export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) 
         const clip = load(config.encoder, config.encoder_type);
         const text = add('TextGenerate', { clip, prompt: config.instruction, max_length: Number(config.max_length),
             sampling_mode: 'off', thinking: false, use_default_template: true, mtp: 'auto', ...(operation === 'describe' ? { image: images[0] } : {}) });
-        const output = add('SaveText', { text, filename_prefix: `manga-maker/${jobId}/${operation}`, format: 'txt' });
+        const output = add('SaveText', { text, filename_prefix: `anima-manga-maker/${jobId}/${operation}`, format: 'txt' });
         return { graph, outputNode: output[0] };
     }
     if (operation === 'analysis') {
@@ -231,7 +231,7 @@ export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) 
         const clip = load(config.analysis_encoder, config.analysis_encoder_type);
         const text = add('TextGenerate', { clip, prompt: analysisInstruction(config), image: images[0], max_length: Number(config.max_length),
             sampling_mode: 'off', thinking: false, use_default_template: true, mtp: 'auto' });
-        const output = add('SaveText', { text, filename_prefix: `manga-maker/${jobId}/analysis`, format: 'txt' });
+        const output = add('SaveText', { text, filename_prefix: `anima-manga-maker/${jobId}/analysis`, format: 'txt' });
         return { graph, outputNode: output[0] };
     }
     if (images.length && config.size_mode === 'manual' && (engine === 'qwen' || operation === 'refine')) {
@@ -293,7 +293,7 @@ export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) 
         const sigmas = add('BasicScheduler', { model, scheduler: config.scheduler, steps: Number(config.steps), denoise: sketching ? Number(config.denoise ?? 0.6) : 1 });
         const sampled = add('SamplerCustomAdvanced', { noise: add('RandomNoise', { noise_seed: Number(config.seed) }), guider, sampler: add('KSamplerSelect', { sampler_name: config.sampler }), sigmas, latent_image: latent });
         const decoded = decode(sampled, vae);
-        const output = sketching ? add('PreviewImage', { images: decoded }) : add('SaveImage', { images: decoded, filename_prefix: `manga-maker/${jobId}/result` });
+        const output = sketching ? add('PreviewImage', { images: decoded }) : add('SaveImage', { images: decoded, filename_prefix: `anima-manga-maker/${jobId}/result` });
         return { graph, outputNode: output[0] };
     }
     if (engine === 'moss' || engine === 'anima') {
@@ -317,7 +317,7 @@ export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) 
         const samples = add('KSampler', { model, positive, negative, latent_image: latent, seed: Number(config.seed), steps: Number(config.steps),
             cfg: Number(config.cfg), sampler_name: config.sampler, scheduler: config.scheduler, denoise: 1 });
         const decoded = decode(samples, vae);
-        const output = operation === 'bbox' ? add('PreviewImage', { images: decoded }) : add('SaveImage', { images: decoded, filename_prefix: `manga-maker/${jobId}/result` });
+        const output = operation === 'bbox' ? add('PreviewImage', { images: decoded }) : add('SaveImage', { images: decoded, filename_prefix: `anima-manga-maker/${jobId}/result` });
         return { graph, outputNode: output[0] };
     }
     let model = add('UNETLoader', { unet_name: check('UNETLoader', 'unet_name', config.model, 'Model'), weight_dtype: config.weight_dtype });
@@ -410,6 +410,6 @@ export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) 
             cfg: Number(config.cfg), sampler_name: config.sampler, scheduler: config.scheduler, denoise: 1 });
     }
     const decoded = decode(sampled, vae);
-    const output = sketch || operation === 'bbox' ? add('PreviewImage', { images: decoded }) : add('SaveImage', { images: decoded, filename_prefix: `manga-maker/${jobId}/result` });
+    const output = sketch || operation === 'bbox' ? add('PreviewImage', { images: decoded }) : add('SaveImage', { images: decoded, filename_prefix: `anima-manga-maker/${jobId}/result` });
     return { graph, outputNode: output[0] };
 }

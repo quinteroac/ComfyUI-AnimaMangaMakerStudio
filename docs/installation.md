@@ -10,12 +10,12 @@ Clone the plugin into an existing ComfyUI installation:
 
 ```sh
 # Run from your ComfyUI directory:
-git clone https://github.com/quinteroac/ComfyUI-MangaMakerStudio.git custom_nodes/ComfyUI-MangaMakerStudio
+git clone https://github.com/quinteroac/ComfyUI-AnimaMangaMakerStudio.git custom_nodes/ComfyUI-AnimaMangaMakerStudio
 ```
 
-The package lives in `custom_nodes/ComfyUI-MangaMakerStudio`. When there are no active jobs, restart ComfyUI and reload the browser. Project management, page layout and drawing use aiohttp and Pillow included with ComfyUI, plus a bundled Klecks build. Generation and image conversion require the node packages and model weights listed under [Node dependencies](installation.md#node-dependencies); install only those needed for the features you use. It does not modify ComfyUI core. Studio's guided weight downloads from Hugging Face start only when you click **Download missing official weights**; opening the Studio or checking models does not initiate external connections.
+The package lives in `custom_nodes/ComfyUI-AnimaMangaMakerStudio`. When there are no active jobs, restart ComfyUI and reload the browser. Project management, page layout and drawing use aiohttp and Pillow included with ComfyUI, plus a bundled Klecks build. Generation and image conversion require the node packages and model weights listed under [Node dependencies](installation.md#node-dependencies); install only those needed for the features you use. It does not modify ComfyUI core. Studio's guided weight downloads from Hugging Face start only when you click **Download missing official weights**; opening the Studio or checking models does not initiate external connections.
 
-Open **Manga Maker Studio** from the sidebar or **Manga Maker** menu. The workspace uses the same ComfyUI server and queue as the graph editor. No separate server, account or npm installation is required to use Studio.
+Open **Anima Manga Maker Studio** from the sidebar or **Manga Maker** menu. The workspace uses the same ComfyUI server and queue as the graph editor. No separate server, account or npm installation is required to use Studio.
 
 ## Node dependencies
 
