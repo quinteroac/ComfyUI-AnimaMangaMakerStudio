@@ -11,8 +11,8 @@ These guides explain how the workspace is organized, which settings affect each 
 | [Configuration](configuration.md) | Global models, per-operation overrides, presets, text/vision settings and output size |
 | [Story Studio and assistant](story.md) | Logline, character cards, plot structure, script editor and the local GGUF assistant |
 | [MCP server](mcp.md) | Reading projects and writing the story from an MCP client |
-| [Using Studio](usage.md) | References, panels, image actions, refinement and finishing |
-| [Drawing and manga conversion](drawing.md) | Klecks, Sketch to Art, Art to Manga Panel, regions, masks and layered saving |
+| [Using Studio](usage.md) | Style, references, panels, engines and image actions |
+| [Drawing and manga conversion](drawing.md) | Klecks, Sketch to Art, BBox to Image, Art to Manga Panel, regions, masks and layered saving |
 | [Page layout](page-layout.md) | Composition, panel framing, dialogue, fonts and export |
 | [Projects and storage](projects.md) | Versions, Trash, saving, migration, jobs and common problems |
 | [Credits and attribution](credits.md) | Upstream projects, contributors, workflow sources and license notices |

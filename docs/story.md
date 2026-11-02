@@ -18,7 +18,7 @@
 ## From story to images and pages
 
 - **Generate reference sheet** (Characters) fills the References prompt with the Character preset, the card's name and its visual prompt (or appearance). Generate the image there, then link it to the card with **Link reference image** or **Choose portrait**.
-- **Send to Panels** (Script) fills the Panels prompt with the panel description, the characters' visual prompts and the shot. For engines that take references, the first available portrait or reference image of each character is connected (up to four, except Qwen). Link the generated image back with **Link panel image**.
+- **Send to Panels** (Script) fills the Panels prompt with the panel description, the characters' visual prompts and the shot. With Anima Ref, the first available portrait or reference image of each character is connected (up to four). Link the generated image back with **Link panel image**.
 - **Create page layout** (Script) creates a Page layout with one panel per script panel, in reading order, and a bubble for each line: dialogue → oval, thought → cloud, caption → box, SFX → shout. Linked panel images are placed in their panels. **Update page layout** replaces the panels and bubbles of the linked layout; other layout settings are kept.
 
 ## Assistant

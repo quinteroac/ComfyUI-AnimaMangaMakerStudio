@@ -14,8 +14,8 @@ Inspected environment: ComfyUI 0.39.0 and frontend 1.55.14. Uses `app.registerEx
 
 - Storage and route tests: isolation, versions, originals, duplication, relocation, containment and results associated with the correct project.
 - Story and assistant tests: story actions, context, script layouts, GGUF catalog and projector pairing, streamed answers, history, keep-loaded reuse and release before workflows. Route tests use a fake inference worker; no model is loaded.
-- Prompt tests: Krea/Qwen paths, actual reference connections, LoRA chains reaching the sampler, separate analysis and missing dependencies. Installed V3 schemas were checked without loading models.
-- Browser tests: references, panels, refinement, composition, analysis and finishing with the real frontend and isolated storage. Only the generative queue is simulated; models are not loaded. Pixel-identical export, reopening, light/dark themes, a small window and an unchanged ComfyUI graph.
+- Prompt tests: Anima and Anima Ref graphs, reference stitching, LoRA chains reaching the sampler, sketch latents, bbox layout prompts, chroma key, text tasks and missing dependencies. Installed V3 schemas were checked without loading models.
+- Browser tests: style, references, panels, Klecks workflows, composition and text tasks with the real frontend and isolated storage. Only the generative queue is simulated; models are not loaded. Pixel-identical export, reopening, light/dark themes, a small window and an unchanged ComfyUI graph.
 
 ```sh
 # Run these commands from the ComfyUI directory:
@@ -34,6 +34,6 @@ CHROMIUM_PATH=/path/chromium node --experimental-default-type=module custom_node
 
 Sources checked against the installed code: [extensions](https://docs.comfy.org/custom-nodes/js/javascript_overview), [sidebar](https://docs.comfy.org/custom-nodes/js/javascript_sidebar_tabs), [server](https://docs.comfy.org/development/comfyui-server/comms_routes) and [frontend development](https://github.com/Comfy-Org/ComfyUI_frontend/blob/main/docs/extensions/development.md).
 
-The detailed dated validation record is kept in [VALIDATION.md](../VALIDATION.md). The browser fixtures use isolated temporary storage and simulated generation outputs. They are also the source of the documentation screenshots; no production project data is shown.
+The detailed dated validation record is kept in [VALIDATION.md](../VALIDATION.md). The browser fixtures use isolated temporary storage and simulated generation outputs; no production project data is shown. They need a running ComfyUI at `COMFY_URL` (default `http://127.0.0.1:8188`) and read its `/object_info`.
 
-For `test_manga.mjs`, collect `object_info.json` from a server with MangaScreen installed; enable ControlNet Auxiliary Preprocessors to validate the optional lineart branch. Passing that schema file as a final argument to `browser_sketch.mjs` also exercises both manga modes through the simulated queue.
+For `test_manga.mjs`, collect `object_info.json` from a server with MangaScreen installed; enable ControlNet Auxiliary Preprocessors to validate the optional lineart branch. Passing that schema file as a final argument to `browser_sketch.mjs` also exercises Manga-Lite and BBox to Image through the simulated queue.

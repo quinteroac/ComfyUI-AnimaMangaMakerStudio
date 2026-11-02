@@ -9,7 +9,6 @@ Read this when inspecting a running server or configuring it through HTTP. All p
 | `GET /object_info` | Loaded node schemas and registered model/encoder/VAE/LoRA filenames |
 | `GET /queue` | `queue_running` and `queue_pending`; both must be empty before an idle restart |
 | `GET /anima-manga-maker/settings` | Current global configuration |
-| `GET /anima-manga-maker/models` | Catalog `profiles`, `artifacts`, installed weight paths and download state; does not start downloads |
 | `GET /anima-manga-maker/assistant` | Story assistant: `available` (llama-cpp-python installed), `defaults`, GGUF `models` with compatible `projectors`, scan `errors`, and whether a model is `loaded`. Settings live under `assistant` in `/anima-manga-maker/settings` |
 | `POST /anima-manga-maker/settings` | Persist settings; see replacement semantics below |
 
@@ -31,9 +30,9 @@ Global configuration is stored in the active ComfyUI user directory as `anima-ma
 }
 ```
 
-`models` contains engine profiles keyed by `krea`, `krea_edit`, and `qwen`. Relevant fields include `model`, `encoder`, `encoder_type`, `vae`, `weight_dtype`, `encoder_device`, sampling values and engine-specific fields. Use the checkout's `web/prompts.js` (`initialSettings`), `web/models.js`, catalog profiles and installed schemas rather than creating a new configuration format. Krea uses encoder type `krea2`.
+`models` contains engine profiles keyed by `anima` and `anima_ref`. Relevant fields include `model`, `encoder`, `encoder_type`, `vae`, `weight_dtype`, `encoder_device`, sampling values and, for `anima_ref`, `ref_adapter_lora`, `ref_guidance` and `pag_scale`. Defaults come from `profiles` in the checkout's `web/models.js`; use it, `web/prompts.js` (`initialSettings`) and installed schemas rather than creating a new configuration format. Anima uses encoder type `stable_diffusion`.
 
-The backend preserves omitted top-level fields, but submitted `models`, `defaults`, `presets` or `text_generator` maps replace the corresponding stored maps. For example, `{"models":{"qwen":{"model":"new.safetensors"}}}` would discard other engines and other stored Qwen fields. Read, deep-copy and merge the requested fields first. Preserve unspecified fields, including numeric zeros and user-selected device/precision settings.
+The backend preserves omitted top-level fields, but submitted `models`, `defaults`, `presets` or `text_generator` maps replace the corresponding stored maps. For example, `{"models":{"anima":{"model":"new.safetensors"}}}` would discard Anima Ref and other stored Anima fields. Read, deep-copy and merge the requested fields first. Preserve unspecified fields, including numeric zeros and user-selected device/precision settings.
 
 A safe request sequence for a user-requested change is:
 
@@ -42,7 +41,7 @@ A safe request sequence for a user-requested change is:
 before = get_json('/anima-manga-maker/settings')
 save_backup(before)  # local backup outside published repository content
 models = deepcopy(before.get('models', {}))
-profile = models.setdefault('qwen', {})
+profile = models.setdefault('anima', {})
 profile.update(validated_user_requested_fields)
 # Re-read before saving if discovery or user decisions took time; re-merge on changes.
 post_json('/anima-manga-maker/settings', {'models': models})
@@ -52,12 +51,8 @@ after = get_json('/anima-manga-maker/settings')
 
 The plugin uses registered user storage and validates the project root. Do not change `root` to complete model selection. Moving projects requires their complete folders and stable identifiers, as described in repository `docs/projects.md`.
 
-Project configuration stores operation settings under `config`, such as `panels:krea_edit`, `sketch_panels:krea_edit` and `manga_panels:qwen`, with corresponding `references` scopes. `model_overrides` takes priority over global model fields. QWEN-Manga and Manga-Lite use the manga operation's `mode` field; do not create a new global `manga_lite` model engine. Prefer Studio's controls for per-project changes. Read its current project API and file format before automating those changes; do not overwrite a live browser session's unsaved state.
+Project configuration stores operation settings under `config`, such as `panels:anima_ref`, `sketch_panels:anima_ref`, `bbox_panels:anima` and `manga_panels:manga_lite`, with corresponding `references` scopes. `model_overrides` takes priority over global model fields. Manga-Lite has no diffusion model; do not create a global `manga_lite` model engine. Prefer Studio's controls for per-project changes. Read its current project API and file format before automating those changes; do not overwrite a live browser session's unsaved state.
 
-## Downloads and verification
-
-For an explicitly authorized official model download, Studio uses `POST /anima-manga-maker/models/download` with `{"engine":"krea"}`, `{"engine":"krea_edit"}` or `{"engine":"qwen"}`. Inspect the catalog first: each profile may include several large files. Poll `GET /anima-manga-maker/models` and inspect `downloads[engine].state`; a successful POST is not completion. States include `queued`, `downloading`, `complete` and `error`. Download states can include `filename`, `received`, `total` and `error`; wait for `complete` and read configuration back before reporting success.
-
-Completion applies the profile's recommended settings globally. Existing operation overrides still win. The `qwen` profile is regular Qwen, not QWEN-Manga Turbo; Sketch LoRAs and optional annotator weights are separate. Do not invoke this endpoint for an inventory-only request.
+## Verification
 
 Schema/UI checks do not load weights or establish image quality. Report actual inference separately from package installation, registered schemas and settings read-back.

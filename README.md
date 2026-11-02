@@ -1,15 +1,19 @@
 # Anima Manga Maker Studio
 
-**Version:** 0.2.0-alpha.
+**Version:** 0.1.0-alpha.
 
-Anima Manga Maker Studio extends ComfyUI with a workspace for creating manga: organize references and panels in projects, generate images with Krea2, Qwen, Moss or Anima, edit with Krea2 or Qwen, draw with Klecks, and compose pages with custom panel shapes and dialogue. Open **Anima Manga Maker Studio** from the sidebar or the **Manga Maker** menu while keeping your ComfyUI graph intact.
+Anima Manga Maker Studio is a manga workspace for ComfyUI built on a single base model, [Anima](https://huggingface.co/circlestone-labs/Anima). Organize references and panels in projects, generate with Anima or Anima Ref, draw with Klecks, and compose pages with custom panel shapes and dialogue. Open **Anima Manga Maker Studio** from the sidebar or the **Anima Manga Maker** menu while keeping your ComfyUI graph intact.
+
+It is a separate project derived from [Manga Maker Studio](https://github.com/quinteroac/ComfyUI-MangaMakerStudio), which also supports Krea2, Qwen and MOSS. Both can be installed side by side; projects and settings are stored separately.
 
 ## What you can do
 
 - Organize references, panels and pages with preserved originals and versions.
-- Generate and refine art with Krea2, Krea2 Edit or Qwen Image 2.1.
-- Draw in Klecks with editable layers and PSD saving, render drafts with **Sketch to Art**, and convert illustrations with **Art to Manga Panel**.
+- Generate with **Anima** (text to image) or **Anima Ref** (one to four reference images for character and style), using Anima Turbo by default. Models, encoders, VAEs and LoRAs stay configurable globally and per operation.
+- Set a project style with Animadex tags and Stylebook prose, and preview it.
+- Draw in Klecks with editable layers and PSD saving, render drafts with **Sketch to Art**, lay out a scene with **BBox to Image**, and add screentones with **Art to Manga Panel**.
 - Compose pages with rectangular or polygonal panels, speech/thought bubbles, local fonts and PNG export.
+- Write the story in Story Studio with an optional local assistant.
 
 ## Installation
 
@@ -18,32 +22,26 @@ Anima Manga Maker Studio extends ComfyUI with a workspace for creating manga: or
 git clone https://github.com/quinteroac/ComfyUI-AnimaMangaMakerStudio.git custom_nodes/ComfyUI-AnimaMangaMakerStudio
 ```
 
-Restart ComfyUI when no jobs are active and reload the browser. Drawing, project management and page layout use the bundled editor and ComfyUI's existing Python dependencies. AI features require compatible models and, for some operations, separate custom nodes.
-
-**Required packages depend on the feature:** [comfyui-krea2edit](https://github.com/lbouaraba/comfyui-krea2edit) for Krea2 Edit and Sketch to Art; [ComfyUI-MangaScreen](https://github.com/ashukae/ComfyUI-MangaScreen) for Art to Manga Panel; [comfyui_controlnet_aux](https://github.com/Fannovel16/comfyui_controlnet_aux) for optional pen extraction. [PanelComposer](https://github.com/INuBq8/ComfyUI-PanelComposer) is optional for its layout presets. See [Installation and dependencies](docs/installation.md) for exact nodes, weights and supported paths.
+Restart ComfyUI when no jobs are active and reload the browser. Projects, drawing and page layout use the bundled editor and ComfyUI's existing Python dependencies. Generation needs Anima weights and, for Anima Ref, its custom nodes. See [Installation and dependencies](docs/installation.md) for exact nodes and weights.
 
 ## Set up with an agent
 
-You can ask a compatible agent to install and configure the plugin using the included [anima-manga-maker-setup skill](skills/anima-manga-maker-setup/SKILL.md). It helps discover your ComfyUI environment, install the custom nodes needed for your chosen features, reuse compatible weights and preserve existing settings.
-
-Ask the agent to read `skills/anima-manga-maker-setup/SKILL.md`, or invoke `$anima-manga-maker-setup` after registering the skill with your agent. See [Agent-assisted setup](docs/agent-setup.md) for usage, example requests and access requirements. The skill does not itself grant machine access or authorize downloads, restarts or inference.
+Ask a compatible agent to read the included [anima-manga-maker-setup skill](skills/anima-manga-maker-setup/SKILL.md), or invoke `$anima-manga-maker-setup` after registering it. See [Agent-assisted setup](docs/agent-setup.md).
 
 ## Documentation
-
-The [documentation index](docs/README.md) links to guides by topic:
 
 | Guide | Contents |
 | --- | --- |
 | [Agent-assisted setup](docs/agent-setup.md) | Use the included skill to install, configure or diagnose the plugin |
-| [Configuration](docs/configuration.md) | Models, downloads, overrides, presets and text/vision configuration |
+| [Configuration](docs/configuration.md) | Models, LoRAs, presets and text/vision configuration |
 | [Story Studio](docs/story.md) | Logline, characters, plot, script and the local writing assistant |
 | [MCP server](docs/mcp.md) | Read projects and write the story from an MCP client |
-| [Using Studio](docs/usage.md) | References, panels, refinement and finishing |
-| [Drawing and manga conversion](docs/drawing.md) | Klecks, Sketch to Art, Art to Manga Panel and masks |
+| [Using Studio](docs/usage.md) | Style, references and panels |
+| [Drawing and manga conversion](docs/drawing.md) | Klecks, Sketch to Art, BBox to Image, Art to Manga Panel and masks |
 | [Page layout](docs/page-layout.md) | Panels, framing, dialogue, fonts and export |
 | [Projects and storage](docs/projects.md) | Saving, versions, migration and troubleshooting |
 | [Development and validation](docs/development.md) | Build details and tests |
 
 ## Credits
 
-The drawing editor is [Klecks by bitbof](https://github.com/bitbof/klecks). Art to Manga Panel adapts [MangaScreen by ashukae](https://github.com/ashukae/ComfyUI-MangaScreen). Krea2 editing uses [comfyui-krea2edit](https://github.com/lbouaraba/comfyui-krea2edit), and page layouts can import [PanelComposer](https://github.com/INuBq8/ComfyUI-PanelComposer) presets. See [Credits and attribution](docs/credits.md) for all project links, workflow sources and license notices.
+The drawing editor is [Klecks by bitbof](https://github.com/bitbof/klecks). Art to Manga Panel adapts [MangaScreen by ashukae](https://github.com/ashukae/ComfyUI-MangaScreen). Anima Ref uses [ElectronGirl's Anima Ref Adapter](https://github.com/ElectronGirl/ComfyUI-Anima-Ref-Adapter). See [Credits and attribution](docs/credits.md) for all project links and license notices. Anima and its derivatives are under the CircleStone Labs Non-Commercial License; this plugin does not include or relicense any weights.

@@ -13,13 +13,13 @@ Discover the ComfyUI checkout or installation, its active Python executable, ser
 
 Identify the requested features from the task. If the user only asks for basic setup, configure projects, drawing and page layout first and report AI options; do not interpret it as installing every model family. Reuse installed models, user-selected paths and existing settings. Ask only for missing choices that materially affect installation, storage, downloads or compatibility.
 
-Locate the repository's `docs/installation.md` and `docs/configuration.md`; read the sections for the chosen features. They remain authoritative for package URLs and configuration behavior. A copied skill does not contain the plugin: locate or clone `https://github.com/quinteroac/ComfyUI-AnimaMangaMakerStudio` as part of an authorized plugin installation. Read `docs/drawing.md` for Sketch to Art or manga conversion. Do not resolve repository docs relative to the skill's parent if the skill was installed elsewhere.
+Locate the repository's `docs/installation.md` and `docs/configuration.md`; read the sections for the chosen features. They remain authoritative for package URLs and configuration behavior. A copied skill does not contain the plugin: locate or clone `https://github.com/quinteroac/ComfyUI-AnimaMangaMakerStudio` as part of an authorized plugin installation. Read `docs/drawing.md` for Sketch to Art, BBox to Image or manga conversion. Do not resolve repository docs relative to the skill's parent if the skill was installed elsewhere.
 
 ## Inspect before changing
 
 Inspect local changes before updating an existing checkout. Preserve them; do not reset, overwrite, switch branches, update ComfyUI core or upgrade unrelated nodes to make setup easier. Install missing feature dependencies alongside the plugin, not inside its directory, and use the same Python environment as ComfyUI for their declared requirements. Do not clone another copy over an existing installation.
 
-When the server is available, inspect `/object_info`, `/queue`, `/anima-manga-maker/settings` and, for model setup, `/anima-manga-maker/models` on the confirmed server. Existing ComfyUI connectors may provide equivalent inventory. Read [API and settings contracts](references/api.md) before HTTP configuration or interpreting missing routes.
+When the server is available, inspect `/object_info`, `/queue` and `/anima-manga-maker/settings` on the confirmed server. Existing ComfyUI connectors may provide equivalent inventory. Read [API and settings contracts](references/api.md) before HTTP configuration or interpreting missing routes.
 
 Distinguish missing packages, packages installed but not yet loaded, missing node versions, missing registered filenames and incompatible model families. Installing weights cannot fix a missing custom node. Do not infer weight compatibility solely from a filename substring.
 
@@ -28,23 +28,24 @@ Distinguish missing packages, packages installed but not yet loaded, missing nod
 | Requested feature | Setup decisions |
 | --- | --- |
 | Projects, importing, Klecks drawing, page layout/export | Studio plus ComfyUI's existing aiohttp/Pillow; Klecks is bundled. No diffusion weights or npm build. |
+| Anima text to image, BBox to Image | An Anima checkpoint, `qwen_3_06b_base` loaded as `stable_diffusion`, and `qwen_image_vae`. Native nodes only. |
+| Anima Ref, Sketch to Art | `ComfyUI-Anima-Ref-Adapter`, `comfyui-anima-safe-pag` and a Ref Adapter LoRA in `loras`. |
+| Transparency | `ComfyUI_VNCCS` for `VNCCSChromaKey`. |
 | Manga-Lite | MangaScreen and its requirements. No diffusion model. Pen extraction stays off unless requested. |
-| QWEN-Manga | MangaScreen, native Qwen Image 2.1 encoding/sampling, compatible **Turbo** diffusion weights, encoder and VAE. Its sigma schedule differs from regular Qwen generation. |
-| Krea2 Edit / Sketch to Art | `comfyui-krea2edit`, compatible Krea model/encoder/VAE, and the operation's LoRAs. Sketch uses separate Turbo/Sketch LoRAs; it does not automatically add the regular Identity Edit LoRA. |
 | Pen extraction | `comfyui_controlnet_aux`, `Manga2Anime_LineArt_Preprocessor` and annotator weights. First use may download missing weights; keep it off for offline/no-download setup unless weights exist. |
-| Qwen generation / finishing | Native `TextEncodeQwenImage21`, compatible model, `qwen_image` encoder and VAE. Cache is optional. |
+| Style pickers | `comfyui-anima-style-nodes` with its Animadex index and `comfyui-stylebook`; Studio only reads their catalogs. |
 | Text enhancement / image analysis | Native `TextGenerate`, `SaveText`, and a separately configured global text generator. Image tasks need vision support. |
 | Imported PanelComposer presets | PanelComposer is optional; Studio has its own renderer. |
 
-Separate node installation from weight acquisition. Reuse registered filenames and subfolders reported by the installed schemas. For authorized official downloads use Studio's catalog-backed setup, which verifies size/hash; do not auto-download the entire catalog. Its regular Qwen profile supplies non-Turbo weights and does not satisfy QWEN-Manga's Turbo requirement. Retain user-selected compatible alternatives. For missing Sketch/Turbo LoRAs, use a source actually supplied or verified for those artifacts; do not substitute an unrelated LoRA.
+Separate node installation from weight acquisition. The plugin has no download catalog; reuse registered filenames and subfolders reported by the installed schemas, and retain user-selected compatible alternatives such as Anima Base or a finetune. Download weights only when the user authorizes a specific source.
 
 ## Apply configuration without losing user data
 
-Prefer the live Studio settings UI or its API. Back up existing settings before writing. Global `models` keys are `krea`, `krea_edit` and `qwen`; text/vision helpers use `text_generator`. Preserve project root, presets, other engines and existing operation overrides. Read current settings immediately before applying a narrowly merged change; the settings API replaces submitted nested maps rather than patching their individual entries.
+Prefer the live Studio settings UI or its API. Back up existing settings before writing. Global `models` keys are `anima` and `anima_ref`; text/vision helpers use `text_generator`. Preserve project root, presets, other engines and existing operation overrides. Read current settings immediately before applying a narrowly merged change; the settings API replaces submitted nested maps rather than patching their individual entries.
 
 Global values are inherited unless an operation or preset has explicit `model_overrides`. If an old selection persists, inspect that operation instead of repeatedly rewriting globals. Clear only the overrides the user asked to reset. Do not replace project configuration, layouts, sources or asset metadata to change an engine default.
 
-Validate model/encoder/VAE choices and enum values against the running `/object_info`. Krea uses encoder type `krea2`; Qwen uses `qwen_image`. Keep reference order and existing LoRA order/strengths. Configure the global text generator separately from diffusion engines when requested.
+Validate model/encoder/VAE choices and enum values against the running `/object_info`. Anima uses encoder type `stable_diffusion`. Keep reference order and existing LoRA order/strengths. Configure the global text generator separately from diffusion engines when requested.
 
 A reload refreshes UI assets; new Python routes and custom node packages need a ComfyUI restart. Check the queue immediately beforehand. Restart only the confirmed target when idle and within the user's authorization, preserving its launch configuration. Do not interrupt active work. If a restart is unavailable or must wait, finish independent work and report that activation remains pending. Refresh node/model lists after activation.
 

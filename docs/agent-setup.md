@@ -24,9 +24,9 @@ Example requests:
 
 > Read `skills/anima-manga-maker-setup/SKILL.md` and configure Art to Manga Panel with Manga-Lite. Install MangaScreen if missing, keep pen extraction disabled and leave my existing model settings intact. Restart the confirmed ComfyUI instance only when its queue is idle.
 
-> Use `$anima-manga-maker-setup` to configure Sketch to Art using my installed Krea weights and LoRAs. Check the required nodes and encoder type. Report any missing weights before downloading them, and do not run inference.
+> Use `$anima-manga-maker-setup` to configure Anima Ref and Sketch to Art using my installed Anima weights and Ref Adapter. Check the required nodes and encoder type. Report any missing weights, and do not run inference.
 
-> Use `$anima-manga-maker-setup` to diagnose my QWEN-Manga configuration. Reuse my installed Turbo weights and verify the model, encoder, VAE and loaded node schemas without changing other engines or generating an image.
+> Use `$anima-manga-maker-setup` to switch Anima to my manga finetune with 30 steps and CFG 4.5. Verify the model, encoder, VAE and loaded node schemas without changing Anima Ref or generating an image.
 
 ## What the agent configures
 
@@ -35,7 +35,7 @@ Example requests:
 | Target environment | Identify the intended ComfyUI installation, Python runtime and server rather than assuming a path or port |
 | Dependencies | Install only packages needed for the requested features; distinguish custom nodes from model weights |
 | Existing configuration | Preserve projects, root folder, presets, other engines and operation overrides; back up settings before writing |
-| Models and encoders | Reuse registered resources, match encoder types and distinguish regular Qwen from QWEN-Manga Turbo |
+| Models and encoders | Reuse registered resources and match the Anima encoder type and VAE |
 | Optional features | Keep pen extraction and its annotator downloads within the requested scope |
 | Activation | Check the queue and preserve the server's launch configuration for an authorized idle restart |
 | Verification | Read settings back, inspect loaded schemas and check the UI when available; identify what still needs activation or weights |

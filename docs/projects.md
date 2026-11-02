@@ -37,4 +37,4 @@ Drawing generation and manga conversion return previews to the open Klecks sessi
 | A layout's font changes after migration | Install the same font file on the destination installation |
 | A job no longer appears in queue/history | Preserve ComfyUI history until collection; check server history and rerun if needed |
 
-Generation quality depends on the selected weights and instructions. For Krea2 edits, check reference order, fidelity and initial latent before changing unrelated global settings.
+Generation quality depends on the selected weights and instructions. For Anima Ref, check the connected references and reference guidance before changing unrelated global settings.
