@@ -1,7 +1,7 @@
 import { api } from '../../scripts/api.js';
 import { uuid, el, button, iconButton, field, request, assetUrl, inputUrl, download, chooseFile, sizeControls } from './client.js';
 import { sizeSettings, sizeLabel } from './size.js';
-import { options, defaultAttention, alphaMethods, referenceLimits, controlTypes, redrawModes, initialSettings, buildPrompt, composePrompt, promptSections, referencePrompt, parsePrompt, referencePresets, textGeneratorDefaults, textInstruction } from './prompts.js';
+import { options, defaultAttention, alphaMethods, referenceLimits, controlTypes, redrawModes, tilePatches, installedPatch, initialSettings, buildPrompt, composePrompt, promptSections, referencePrompt, parsePrompt, referencePresets, textGeneratorDefaults, textInstruction } from './prompts.js';
 import { newPage, normalizePage, PageEditor } from './editor.js';
 import { modelFields, profiles, globalModels, inheritModels, applyPreset, savedPreset } from './models.js';
 import { openDrawing } from './drawing.js';
@@ -868,16 +868,17 @@ export class Studio {
         if (result.prompt_id !== job.id) throw new Error('The server did not preserve the execution identifier.');
         registered.state = 'queued'; this.jobs();
     }
-    // A larger version of an image: Anima redraws it at the target resolution from the image itself, held by the grayscale (or a tile) LLLite.
-    // The image's own prompt is used when it has one, since colors the prompt does not name can drift.
+    // A larger version of an image: Anima redraws it at the target resolution from the image itself, held by a Tile & Repair LLLite when installed,
+    // or else by the any-test LLLite on its grayscale. The image's own prompt is used when it has one; without a tile model, colors it does not name can drift.
     upscaleDialog(asset) {
         const existing = this.project.config['upscale:anima'], cfg = this.config('upscale', 'anima');
-        if (!existing) Object.assign(cfg, { megapixels: 2, denoise: 0.3, redraw_mode: 'gray', redraw_strength: 1, redraw_end: 1, random_seed: true,
-            redraw_patch: options(this.defs, 'ModelPatchLoader', 'name').find(name => name.split('/').at(-1) === controlTypes.anytest.patch) || controlTypes.anytest.patch });
+        const holds = { tile: { patch: installedPatch(this.defs, tilePatches), denoise: 0.5 }, gray: { patch: installedPatch(this.defs, [controlTypes.anytest.patch]) || controlTypes.anytest.patch, denoise: 0.3 } };
+        const hold = mode => ({ redraw_mode: mode, redraw_patch: holds[mode].patch, denoise: holds[mode].denoise });
+        if (!existing) Object.assign(cfg, { megapixels: 2, redraw_strength: 1, redraw_end: 1, random_seed: true }, hold(holds.tile.patch ? 'tile' : 'gray'));
         Object.assign(cfg, referencePrompt(asset) || { prompt_sections: {}, prompt: '' });
         const changed = () => this.saveSoon();
         const number = (label, key, range, step) => slider(label, el('input', { type: 'number', 'aria-label': label, value: cfg[key], step, onchange: e => { cfg[key] = Number(e.target.value); changed(); } }), range);
-        const mode = el('select', { 'aria-label': 'Hold the image with', onchange: e => { cfg.redraw_mode = e.target.value; changed(); } },
+        const mode = el('select', { 'aria-label': 'Hold the image with', onchange: e => { Object.assign(cfg, hold(e.target.value)); changed(); dialog.close(); this.upscaleDialog(asset); } },
             ...['gray', 'tile'].map(value => el('option', { value, text: redrawModes[value].label }))); mode.value = cfg.redraw_mode;
         const content = el('div', { class: 'amm-upscale' }, el('small', { text: `${asset.name} · ${sizeLabel(asset)}. The result is saved as a new version.` }),
             number('Target resolution · MP', 'megapixels', [1, 6], 0.25), number('Denoise · higher adds detail and drifts more', 'denoise', [0, 1], 0.05),

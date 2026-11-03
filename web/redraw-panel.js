@@ -1,5 +1,5 @@
 import { el, field } from './client.js';
-import { options, controlTypes, redrawModes } from './prompts.js';
+import { options, controlTypes, redrawModes, tilePatches, installedPatch } from './prompts.js';
 import { combo, segmented, slider, seed } from './controls.js';
 
 // Redraw presets fill only the Style section; the subject comes from the drawing's structure and the rest of the prompt.
@@ -9,9 +9,9 @@ const redrawPresets = {
 };
 
 // The installed copy of a mode's LLLite, found by filename in any subfolder.
-const modePatch = (defs, mode) => {
+export const modePatch = (defs, mode) => {
     const type = controlTypes[redrawModes[mode].type];
-    return type ? options(defs, 'ModelPatchLoader', 'name').find(name => name.split('/').at(-1) === type.patch) || type.patch : '';
+    return type ? installedPatch(defs, [type.patch]) || type.patch : installedPatch(defs, tilePatches) || '';
 };
 
 export function redrawControls(studio, kind, changed) {

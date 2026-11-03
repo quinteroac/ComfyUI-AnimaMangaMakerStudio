@@ -129,6 +129,10 @@ export const redrawModes = {
     tile: { label: 'Tile · the image itself, for a Tile & Repair LLLite', type: null, extract: 'image' },
 };
 
+// Tile & Repair LLLite by LAXMAYDAY, newest first: Civitai v2.0, Hugging Face v2 and v1. The control is the color image itself, so it also holds colors.
+export const tilePatches = ['animaTileRepair_v20.safetensors', 'anima_tile_taskplus_v2.safetensors', 'anima_tiled_lllite_v1.safetensors'];
+export const installedPatch = (defs, names) => names.map(name => options(defs, 'ModelPatchLoader', 'name').find(file => file.split('/').at(-1) === name)).find(Boolean);
+
 // Lineart extraction alone, for an ink layer in the drawing editor: white lines on black, as the preprocessor returns them.
 export function buildLineartPrompt(defs, imagePath, resolution) {
     if (!defs.AnimeLineArtPreprocessor) throw new Error('Missing node AnimeLineArtPreprocessor. Install comfyui_controlnet_aux and refresh the lists.');

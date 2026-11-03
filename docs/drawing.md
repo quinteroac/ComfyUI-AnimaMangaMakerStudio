@@ -38,7 +38,7 @@ Sketch parameters and prompt/settings presets are stored separately for referenc
 | **Any** (0.7) | any-test | A looser lineart hold. |
 | **Grayscale** (1.0) | any-test | Keeps shapes and shading; manga models turn the shading into screentone. |
 | **Depth** (1.0) | depth | Keeps only the layout; clothes and framing can change. |
-| **Tile** | your Tile & Repair LLLite | The image itself as the control, for a tile model if installed. |
+| **Tile** | Tile & Repair (LAXMAYDAY) | The color image itself as the control: detail and repair while shapes and colors stay. |
 
 **Denoise** below 1 starts from the drawing and keeps more of its colors; at 1 the colors come from the prompt. The **Watercolor** preset only fills the Style section, and Turbo applies such styles lightly. **Extract lineart** puts the drawing's lines on an editable ink layer: black, with each line's opacity following its strength.
 

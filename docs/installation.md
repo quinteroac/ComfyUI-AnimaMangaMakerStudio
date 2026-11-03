@@ -28,6 +28,7 @@ Place these files in ComfyUI's model folders. The defaults match the Anima Turbo
 | VAE | `qwen_image_vae.safetensors` | `vae` |
 | Anima Ref adapter | `anima_ref_adapter_v2_r64.safetensors` (or `anima_ref_adapter_pilot_r32.safetensors`) | `loras` |
 | SnapRef adapter | `snapref_v2a_pre2.safetensors` (or `snapref_v1b.safetensors`) | `loras` |
+| Tile & Repair (upscale, Tile redraw) | `animaTileRepair_v20.safetensors` (Civitai, login required), `anima_tile_taskplus_v2.safetensors` (Hugging Face, gated) or `anima_tiled_lllite_v1.safetensors` (also on ModelScope) | `model_patches` |
 | ControlNet-LLLite controls | Any Anima LLLite v2 file, such as toyxyz `anima_3dpose_outline_7000` or `anima_regional_4335`, or kohya/Comfy-Org `anima-lllite-*` | `model_patches` |
 
 LoRAs are applied to the model only, in list order.

@@ -4,7 +4,7 @@ import { once } from 'node:events';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
-import { options } from '../web/prompts.js';
+import { options, tilePatches } from '../web/prompts.js';
 
 const require = createRequire(import.meta.url), { chromium } = require(process.argv[2]);
 const root = path.resolve(import.meta.dirname, '..');
@@ -125,14 +125,16 @@ try {
     await studio.locator(`.amm-panels .amm-asset[data-asset-id="${panel.id}"]`).getByRole('menuitem', { name: 'Upscale', exact: true }).click();
     const upscale = studio.getByRole('dialog', { name: 'Upscale · Redraw test', exact: true });
     assert.equal(await upscale.getByLabel('Target resolution · MP', { exact: true }).inputValue(), '2');
-    assert.equal(await upscale.getByLabel('Hold the image with', { exact: true }).inputValue(), 'gray');
+    // A Tile & Repair LLLite, when installed, holds the color image itself; otherwise the any-test LLLite holds its grayscale.
+    const tile = options(defs, 'ModelPatchLoader', 'name').some(name => tilePatches.includes(name.split('/').at(-1)));
+    assert.equal(await upscale.getByLabel('Hold the image with', { exact: true }).inputValue(), tile ? 'tile' : 'gray');
     await fillModels(upscale);
     await upscale.getByRole('button', { name: 'Upscale', exact: true }).click(); await upscale.waitFor({ state: 'detached' });
     await page.waitForFunction(async ({ url, id }) => (await (await fetch(url)).json()).assets.some(a => a.parent === id && a.metadata?.operation === 'upscale'),
         { url: `/anima-manga-maker/projects/${backend.project}`, id: panel.id }, { timeout: 30000, polling: 500 });
     graph = queued.at(-1).prompt;
     const up = Object.values(graph).find(n => n.class_type === 'AnimaLLLiteApply');
-    assert.equal(graph[up.inputs.image[0]].class_type, 'MaskToImage'); assert.equal(Object.values(graph).find(n => n.class_type === 'KSampler').inputs.denoise, 0.3);
+    assert.equal(graph[up.inputs.image[0]].class_type, tile ? 'ImageScale' : 'MaskToImage'); assert.equal(Object.values(graph).find(n => n.class_type === 'KSampler').inputs.denoise, tile ? 0.5 : 0.3);
     const scale = Object.values(graph).find(n => n.class_type === 'ImageScale').inputs; assert(scale.width * scale.height > 1.8e6 && scale.width === scale.height, 'Square panel to about 2 MP');
     const version = (await project()).assets.find(a => a.parent === panel.id && a.metadata?.operation === 'upscale');
     assert.equal(version.kind, 'panels'); assert.equal(version.version, panel.version + 1);
@@ -140,7 +142,7 @@ try {
     const graphAfter = await page.evaluate(() => window.comfyAPI.app.app.graph.serialize());
     delete graphBefore.extra.k2cf_state_id; delete graphAfter.extra.k2cf_state_id; assert.deepEqual(graphAfter, graphBefore);
     assert.deepEqual(errors, []);
-    console.log('Redraw passed: lineart redraw with the Color → Manga preset, lineart extraction as an ink layer, and gallery upscale as a new version under the grayscale LLLite.');
+    console.log('Redraw passed: lineart redraw with the Color → Manga preset, lineart extraction as an ink layer, and gallery upscale as a new version under the tile (or grayscale) LLLite.');
 } catch (error) {
     await page.screenshot({ path: '/tmp/manga-redraw-error.png' }); console.error((await page.locator('.amm-studio').innerText().catch(() => 'Studio closed')).slice(-4000), errors); throw error;
 } finally {

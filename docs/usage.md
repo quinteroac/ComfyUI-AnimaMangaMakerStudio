@@ -42,7 +42,7 @@ Hover an image to show its checkbox; selecting images shows a bar with **Clear s
 
 ## Upscale
 
-**Upscale**, in an image's menu, saves a larger version of a reference, panel or page. Anima redraws the image at **Target resolution · MP** (2 by default) from the image itself, held by the any-test LLLite on its grayscale, starting at **Denoise** 0.3; a Tile & Repair LLLite can be selected instead. The image's own prompt is filled in when it has one: colors the prompt does not name can drift, so name them (eyes, hair, clothes) or use **Create prompt from image** first.
+**Upscale**, in an image's menu, saves a larger version of a reference, panel or page. Anima redraws the image at **Target resolution · MP** (2 by default) from the image itself. With a Tile & Repair LLLite installed (LAXMAYDAY, v2 or v1), it holds the color image and starts at **Denoise** 0.5: lines sharpen and colors stay. Without one, the any-test LLLite holds the grayscale at 0.3, and colors the prompt does not name can drift, so name them (eyes, hair, clothes) or use **Create prompt from image** first. The image's own prompt is filled in when it has one.
 
 ## Connected references
 

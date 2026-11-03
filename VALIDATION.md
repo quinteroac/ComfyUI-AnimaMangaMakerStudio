@@ -1,3 +1,9 @@
+# Tile & Repair upscale — November 2, 2026
+
+- Installed `anima_tiled_lllite_v1.safetensors` from the ModelScope mirror (SHA-256 verified); the v2 files are gated on Hugging Face and need a login on Civitai. It loads with the core node (v2 named keys, 3 channels). The author's workflow feeds the color image itself as the control on Anima Base, 30 steps, CFG 4, denoise 1.
+- Real Turbo upscale to 2 MP with the Studio's graph: Tile v1 at denoise 0.5 kept the amber eyes, the red bow and the composition while sharpening lines; at 1.0 it still kept the colors and added more detail with more changes. The grayscale any-test default at 0.3 looked similar but holds no color. Upscale now defaults to a installed tile model at 0.5 (v2 preferred), else grayscale at 0.3.
+- 44 graphs match the installed schemas; `browser_redraw.mjs` passes with the tile default.
+
 # Redraw, lineart and upscale — November 2, 2026
 
 - **Real inference** with the Studio's graphs on the benchmark source. mangaVision with Lineart 1.0 and a manga style inked it as clean manga close to the source; Any 0.7 and Grayscale 1.0 kept it too, Grayscale with screentone in the shading; Depth changed the framing. Turbo kept the composition in Lineart, Any and Grayscale but applied a watercolor style only lightly. Lineart extraction as ink gave clean but light grey lines. Upscale to 2.5 MP under the grayscale LLLite sharpened lines but drifted unnamed colors (amber eyes became blue; the bow turned navy at denoise 0.55); at the default 2 MP and 0.3 with the colors named in the prompt, eyes and bow kept their colors and the lines were sharper than lanczos, with small changes in fine detail.
