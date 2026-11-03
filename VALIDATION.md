@@ -1,3 +1,8 @@
+# Alpha LoRA transparency — November 2, 2026
+
+- **Real inference** with the Studio's graph and localai0301/Anima-RGBA (LoRA at 1, RGBA VAE through the core VAE loader): Turbo (witch, 816×1224) and mangaVision (manga swordsman) decoded RGBA directly with clean cut-outs and a soft shadow under the feet; 56% and 80% of pixels transparent.
+- **47 graphs** match the installed schemas, adding the alpha LoRA on Anima, Anima Ref and SnapRef (the installed LoRA found by filename, after the user's LoRAs, RGBA VAE decode, transparent-background prompt). `browser_sketch.mjs` still passes.
+
 # Tile & Repair upscale — November 2, 2026
 
 - Installed `anima_tiled_lllite_v1.safetensors` from the ModelScope mirror (SHA-256 verified); the v2 files are gated on Hugging Face and need a login on Civitai. It loads with the core node (v2 named keys, 3 channels). The author's workflow feeds the color image itself as the control on Anima Base, 30 steps, CFG 4, denoise 1.

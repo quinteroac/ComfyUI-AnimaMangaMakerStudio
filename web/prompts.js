@@ -145,9 +145,11 @@ export function defaultAttention(defs, engine) {
     return options(defs, 'ModelAttentionBackend', 'attention').includes('comfy kitchen attention') ? 'comfy kitchen attention' : 'pytorch attention';
 }
 
+// Alpha LoRA: localai0301/Anima-RGBA, a LoRA plus a Qwen-Image VAE with a four-channel decoder that outputs straight RGB and alpha.
 // Chroma key asks for a flat background and removes it with VNCCS Chroma Key.
-export const alphaMethods = { anima: ['chromakey'], anima_ref: ['chromakey'], anima_snapref: ['chromakey'] };
+export const alphaMethods = { anima: ['lora', 'chromakey'], anima_ref: ['lora', 'chromakey'], anima_snapref: ['lora', 'chromakey'] };
 const alphaBackground = {
+    lora: 'isolated on a transparent background',
     chromakey: 'Isolated on a completely flat, uniform, solid dark indigo purple background (hex #1E0050) with no gradient, no shadow and no texture.',
 };
 
@@ -188,6 +190,8 @@ export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) 
         if (!value || !options(defs, node, input).includes(value)) throw new Error(`${label}: missing or unregistered selection (${value || 'not selected'}).`);
         return value;
     };
+    // The installed copy of a file named without its subfolder.
+    const installed = (node, input, value, label) => check(node, input, options(defs, node, input).find(name => name === value || name.split('/').at(-1) === value?.split('/').at(-1)) || value, label);
     const load = (name, type) => add('CLIPLoader', {
         clip_name: check('CLIPLoader', 'clip_name', name, 'Encoder'), type: check('CLIPLoader', 'type', type, 'Encoder type'), device: config.encoder_device,
     });
@@ -202,8 +206,9 @@ export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) 
     }
     const alpha = alphaMethods[engine]?.includes(config.alpha) ? config.alpha : '';
     const prompt = [composePrompt(config), alphaBackground[alpha]].filter(Boolean).join('\n\n');
-    // Settings follow the chroma key workflows.
-    const decode = (samples, vae) => alpha === 'chromakey' ? add('VNCCSChromaKey', { image: add('VAEDecode', { samples, vae }), tolerance: 0.15, softness: 0.12, despill_strength: 0.65, edge_width: 3,
+    // Settings follow the chroma key workflows; the RGBA VAE decodes the alpha LoRA's latents directly.
+    const decode = (samples, vae) => alpha === 'lora' ? add('VAEDecode', { samples, vae: add('VAELoader', { vae_name: installed('VAELoader', 'vae_name', config.alpha_vae, 'RGBA VAE') }) })
+        : alpha === 'chromakey' ? add('VNCCSChromaKey', { image: add('VAEDecode', { samples, vae }), tolerance: 0.15, softness: 0.12, despill_strength: 0.65, edge_width: 3,
         matte_cleanup: 0.1, foreground_recover: 0.35, edge_decontaminate: 0.75, edge_choke: 0.08, matte_method: 'guided_edge', screen_mode: 'auto', output_mode: 'straight_rgba', use_sam3_recovery_mask: false })
         : add('VAEDecode', { samples, vae });
     // Drawing editor results and project style previews stay in ComfyUI's temp folder instead of the project.
@@ -220,6 +225,7 @@ export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) 
     for (const lora of config.loras.filter(l => l.enabled)) {
         model = add('LoraLoaderModelOnly', { model, lora_name: check('LoraLoaderModelOnly', 'lora_name', lora.name, 'LoRA'), strength_model: Number(lora.model) });
     }
+    if (alpha === 'lora') model = add('LoraLoaderModelOnly', { model, lora_name: installed('LoraLoaderModelOnly', 'lora_name', config.alpha_lora, 'Alpha LoRA'), strength_model: 1 });
     // Controls are staged with the job; operations that stage no control image (sketch, bbox, previews) run without them.
     const controls = (config.controls || []).filter(c => c.enabled && c.image_path);
     // The image-to-image start latent of inpaint, redraw and upscale.

@@ -326,8 +326,13 @@ export class Studio {
     alphaControls(host, cfg, engine, changed) {
         if (!alphaMethods[engine]) return;
         if (!alphaMethods[engine].includes(cfg.alpha)) cfg.alpha = '';
-        host.append(segmented('Transparency', [['', 'Off'], ['chromakey', 'Chroma key']], cfg.alpha, value => { cfg.alpha = value; changed(); }),
-            el('small', { text: 'Chroma key asks for a flat indigo background and removes it with VNCCS Chroma Key.' }));
+        const set = key => value => { cfg[key] = value; (cfg.model_overrides ||= {})[key] = value; changed(); };
+        const files = el('div');
+        const render = () => files.replaceChildren(...cfg.alpha === 'lora' ? [combo('Alpha LoRA', options(this.defs, 'LoraLoaderModelOnly', 'lora_name'), cfg.alpha_lora, set('alpha_lora')),
+            combo('RGBA VAE', options(this.defs, 'VAELoader', 'vae_name'), cfg.alpha_vae, set('alpha_vae'))] : []);
+        host.append(segmented('Transparency', [['', 'Off'], ['lora', 'Alpha LoRA'], ['chromakey', 'Chroma key']], cfg.alpha, value => { cfg.alpha = value; changed(); render(); }),
+            el('small', { text: 'Alpha LoRA (localai0301/Anima-RGBA) decodes straight RGBA with its VAE; the prompt asks for a transparent background. Chroma key asks for a flat indigo background and removes it with VNCCS Chroma Key.' }), files);
+        render();
     }
     presetChanged(space, host = this.views.get(space)) {
         const state = this.state(space);

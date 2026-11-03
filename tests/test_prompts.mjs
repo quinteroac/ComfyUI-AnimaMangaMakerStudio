@@ -155,6 +155,23 @@ const lineart = buildLineartPrompt(defs, 'drawing.png', 768);
 assert.deepEqual(Object.values(lineart.graph).map(n => n.class_type), ['LoadImage', 'AnimeLineArtPreprocessor', 'PreviewImage']);
 jobs.push({ engine: 'none', op: 'lineart', count: 0, ...lineart });
 
+// Alpha LoRA: the RGBA LoRA after the user's LoRAs, its VAE decodes straight RGBA, and the prompt asks for a transparent background.
+{
+    const rgbaLora = options(defs, 'LoraLoaderModelOnly', 'lora_name').find(name => name.endsWith('anima_rgba_lora.safetensors'));
+    const rgbaVae = options(defs, 'VAELoader', 'vae_name').find(name => name.endsWith('anima_rgba_vae.safetensors'));
+    if (rgbaLora && rgbaVae) for (const [engine, images] of [['anima', []], ['anima_ref', ['a.png']], ['anima_snapref', ['a.png']]]) {
+        const lora = options(defs, 'LoraLoaderModelOnly', 'lora_name')[0];
+        const built = buildPrompt(defs, 'panels', engine, { ...configFor(engine, { prompt: '1girl, witch' }), alpha: 'lora', alpha_lora: 'anima_rgba_lora.safetensors', alpha_vae: 'anima_rgba_vae.safetensors',
+            loras: [{ name: lora, model: 0.5, enabled: true }] }, images, 'alpha'), graph = built.graph;
+        const loras = Object.entries(graph).filter(([, n]) => n.class_type === 'LoraLoaderModelOnly');
+        assert.deepEqual(loras.map(([, n]) => n.inputs.lora_name), [lora, rgbaLora], 'The installed RGBA LoRA, found by filename, follows the user LoRAs');
+        const decode = graph[graph[built.outputNode].inputs.images[0]];
+        assert.equal(decode.class_type, 'VAEDecode'); assert.equal(graph[decode.inputs.vae[0]].inputs.vae_name, rgbaVae);
+        assert(Object.values(graph).some(n => n.class_type === 'CLIPTextEncode' && String(n.inputs.text).endsWith('isolated on a transparent background')));
+        jobs.push({ engine, op: 'panels', count: images.length, ...built });
+    }
+}
+
 // Anima Artist Mixer replaces the positive text encoding and wraps the model.
 for (const [engine, images, op] of [['anima', [], 'panels'], ['anima_ref', ['a.png'], 'panels'], ['anima', [], 'bbox']]) {
     const built = buildPrompt(defs, op, engine, { ...configFor(engine, { prompt: '1girl, rain' }), artist_chain: ' @kubo tite, @mineru::0.6 ', artist_strength: 1.5, boxes: [] }, images, 'artists'), graph = built.graph;

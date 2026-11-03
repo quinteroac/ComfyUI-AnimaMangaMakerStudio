@@ -44,7 +44,7 @@ Sketch parameters and prompt/settings presets are stored separately for referenc
 
 ## Transparency
 
-**Transparency · Chroma key** in Sketch to Art and BBox to Image asks for a flat indigo background and removes it with **VNCCS Chroma Key**, so only the subject covers the drawing.
+**Transparency** in Sketch to Art and BBox to Image makes only the subject cover the drawing. **Alpha LoRA** uses [localai0301/Anima-RGBA](https://huggingface.co/localai0301/Anima-RGBA): its LoRA at strength 1 and its RGBA VAE, which decodes straight RGB and alpha, with the prompt asking for a transparent background. It gave clean cut-outs on Anima Turbo and mangaVision; fine semi-transparent detail such as hair strands is its weakest area. **Chroma key** asks for a flat indigo background and removes it with **VNCCS Chroma Key**.
 
 With transparency on, BBox to Image splits the result into one layer per box, so each element can be moved with Klecks' transform tool. Overlapping boxes, also through a chain of overlaps, share one layer cut to the union of their boxes; its name lists them, such as **Boxes 1+2**. Pixels the model draws outside every box go to an **Outside boxes** layer, created only when it has content. Generating again replaces these layers, and a group that no longer exists is emptied rather than deleted. The cut follows the box rectangles, so a subject that spills past its box keeps that part in another layer.
 
