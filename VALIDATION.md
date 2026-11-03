@@ -1,3 +1,9 @@
+# Scene blockout — November 2, 2026
+
+- **Chromium `browser_scene.mjs`:** **Build scene…** opens the classroom template with its Back corner and Low front cameras; a stairs piece is added and moved, and **Apply to layers** renders the Low front camera at the drawing's 3:2 size into `Control · Scene edges` (black edges on white, Any 0.7) and `Control · Scene depth` (Depth 1.0). The scene, the piece and the chosen camera are saved in the project, reopening starts from the same camera, and a second render replaces the two layers. `browser_pose.mjs` still passes with the shared control-layer code.
+- **Real inference** with those exported layers on Turbo and mangaVision (seed 11, scenery prompt): edges on Any 0.7, depth 1.0 and both together all kept the camera, the room's corner and the rows of desks, and drew real desks, chairs, windows and a blackboard over the boxes. On this blockout edges plus depth stayed clean on mangaVision, unlike lineart 1.0 plus depth in the earlier prototype.
+- 47 graphs still match the installed schemas.
+
 # Alpha LoRA transparency — November 2, 2026
 
 - **Real inference** with the Studio's graph and localai0301/Anima-RGBA (LoRA at 1, RGBA VAE through the core VAE loader): Turbo (witch, 816×1224) and mangaVision (manga swordsman) decoded RGBA directly with clean cut-outs and a soft shadow under the feet; 56% and 80% of pixels transparent.

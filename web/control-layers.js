@@ -3,6 +3,7 @@ import { el, button, iconButton, field, assetUrl } from './client.js';
 import { controlTypes, options } from './prompts.js';
 import { combo, slider, toggle } from './controls.js';
 import { poseEditor, meshRegions, mannequinColors } from './pose-editor.js';
+import { sceneEditor } from './scene-editor.js';
 
 export const maskLayer = 'Control · Mask';
 
@@ -45,15 +46,30 @@ export function controlLayers(studio, scope, send, dimensions, changed) {
         ctx.putImageData(meshRegions(ctx.getImageData(0, 0, canvas.width, canvas.height), colors?.length ? colors : mannequinColors), 0, 0);
         create(target.name, canvas.toDataURL('image/png'));
     }
+    const entry = (type, name = null) => {
+        const def = controlTypes[type];
+        if (!name) { name = `Control · ${def.label}`; for (let i = 2; state.control_layers.some(c => c.name === name); i++) name = `Control · ${def.label} ${i}`; }
+        const c = { name, type, enabled: true, patch: options(studio.defs, 'ModelPatchLoader', 'name').find(file => file.split('/').at(-1) === def.patch) || def.patch,
+            strength: def.strength, start: def.start, end: def.end };
+        state.control_layers.push(c); return c;
+    };
     const add = el('select', { 'aria-label': 'Add control layer', onchange: () => {
-        const type = controlTypes[add.value]; if (!type) return;
-        let name = `Control · ${type.label}`;
-        for (let i = 2; state.control_layers.some(c => c.name === name); i++) name = `Control · ${type.label} ${i}`;
-        state.control_layers.push({ name, type: add.value, enabled: true, patch: options(studio.defs, 'ModelPatchLoader', 'name').find(file => file.split('/').at(-1) === type.patch) || type.patch,
-            strength: type.strength, start: type.start, end: type.end });
-        add.value = ''; create(name); changed(); render();
+        if (!controlTypes[add.value]) return;
+        const c = entry(add.value); add.value = ''; create(c.name); changed(); render();
     } }, el('option', { value: '', text: 'Add control layer…' }), ...Object.entries(controlTypes).map(([value, type]) => el('option', { value, text: type.label })));
-    element.append(field('Add control layer', add, 'Paint on the new layer, or fill it from an image; transparent parts become the background the control expects. Control layers are saved in the PSD but left out of the drawing sent to the model and of the PNG.'), rows);
+    // The scene's edges feed the Any LLLite and its depth the Depth LLLite, each in its own layer that a new render replaces.
+    const scene = button('Build scene…', () => studio.action(async () => {
+        if (!dimensions()) throw new Error('Wait for the drawing to open before building a scene.');
+        const result = await sceneEditor(studio, state.scene, dimensions()); if (!result) return;
+        const { maps, ...choice } = result; state.scene = choice;
+        for (const [map, type, name] of [['edges', 'anytest', 'Control · Scene edges'], ['depth', 'depth', 'Control · Scene depth']]) {
+            if (!maps[map]) continue;
+            const c = state.control_layers.find(c => c.name === name) || entry(type, name); c.enabled = true; create(name, maps[map]);
+        }
+        changed(); render();
+    }));
+    element.append(field('Add control layer', add, 'Paint on the new layer, or fill it from an image; transparent parts become the background the control expects. Control layers are saved in the PSD but left out of the drawing sent to the model and of the PNG.'),
+        el('div', { class: 'amm-field' }, scene, el('small', { text: 'Block out a location with boxes and cameras; the camera view becomes control layers for the background.' })), rows);
     render();
     return {
         element,

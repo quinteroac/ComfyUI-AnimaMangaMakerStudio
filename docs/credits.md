@@ -14,6 +14,7 @@ Anima Manga Maker Studio integrates the following projects and workflows. Credit
 | [ComfyUI-Anima-Ref-Adapter — ElectronGirl](https://github.com/ElectronGirl/ComfyUI-Anima-Ref-Adapter) and [anima-ref-adapter](https://huggingface.co/ElectronGirl/anima-ref-adapter) | Reference adapter, latent and guider used by Anima Ref and Sketch to Art, following its `anima_ref_adapter_pag_multi` workflow. |
 | [comfyui-anima-safe-pag — iljung1106](https://github.com/iljung1106/comfyui-anima-safe-pag) | Safe PAG used by Anima Ref. |
 | [ComfyUI_VNCCS — AHEKOT](https://github.com/AHEKOT/ComfyUI_VNCCS) | VNCCS Chroma Key for transparent results. |
+| [three.js — three.js authors](https://github.com/mrdoob/three.js) | Bundled r160 (`drawing/three/`, MIT license in each file header) for the scene blockout, with its OrbitControls and TransformControls. |
 | [comfyui-anima-style-nodes — fulletLab](https://github.com/fulletLab/comfyui-anima-style-nodes) and [comfyui-stylebook — EnragedAntelope](https://github.com/EnragedAntelope/comfyui-stylebook) | Animadex and Stylebook catalogs read by the style pickers. |
 | [ControlNet Auxiliary Preprocessors — Fannovel16 and contributors](https://github.com/Fannovel16/comfyui_controlnet_aux) | Optional Manga Lineart extraction via `Manga2Anime_LineArt_Preprocessor`, based on Li et al., *Deep Extraction of Manga Structural Lines*, SIGGRAPH 2017. |
 | [ComfyUI-PanelComposer — INuBq8](https://github.com/INuBq8/ComfyUI-PanelComposer) | Compatible panel-layout presets imported by Studio's page editor. |
