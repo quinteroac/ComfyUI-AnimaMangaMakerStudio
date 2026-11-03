@@ -1,7 +1,7 @@
 import { el, button, iconButton, field, assetUrl, download } from './client.js';
 import { resizer } from './controls.js';
 import { newPage, normalizePage } from './editor.js';
-import { referencePresets } from './prompts.js';
+import { referenceLimits, referencePresets } from './prompts.js';
 import { Assistant } from './assistant.js';
 import { modules, characterFields, shots, shotPrompts, lineTypes, templates, structure, normalizeStory, findPage, layoutFromScript, scriptMarkdown,
     newAct, newBeat, newCharacter, newChapter, newScriptPage, newPanel, newLine } from './story-data.js';
@@ -208,7 +208,7 @@ export class StoryStudio {
             composition: shotPrompts[panel.shot], ...(style ? { style } : {}) };
         cfg.prompt = '';
         const references = cast.map(c => [c.portrait, ...c.references].find(id => this.available(id))).filter(Boolean);
-        if (engine === 'anima_ref' && references.length) cfg.references = references.slice(0, 4);
+        if (referenceLimits[engine] && references.length) cfg.references = references.slice(0, referenceLimits[engine]);
         this.studio.presetChanged('panels'); this.studio.rebuild('panels'); this.studio.switch('panels');
         this.studio.notify('Panel prompt ready. Generate it, then link the image to the script panel.');
     }

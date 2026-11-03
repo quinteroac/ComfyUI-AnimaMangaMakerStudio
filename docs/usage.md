@@ -22,8 +22,9 @@ Select the engine under **Engine** in References and Panels:
 
 - **Anima** generates from text. Reuse a saved reference prompt through **Use image prompt** in its image menu.
 - **Anima Ref** takes character and style from one to four connected references and the scene from the prompt. The references are placed side by side as one reference image, so describe the scene, pose and framing rather than the character. **Use with Anima Ref** in an image menu switches to this engine with that image connected.
+- **Anima SnapRef** takes one to three pictures of the same character. In **Character** mode the style comes from the model and prompt, which keeps a manga style; **Character & style** also takes the art style from the pictures.
 
-Both share prompts, presets, AR/MP, seed, sampling overrides and additional LoRAs. See [Configuration](configuration.md) for models and defaults.
+All three share prompts, presets, AR/MP, seed, sampling overrides, additional LoRAs, [LLLite controls](configuration.md#controls--lllite) and the [Artist Mixer](configuration.md#artist-mixer). See [Configuration](configuration.md) for models and defaults.
 
 ## Style
 

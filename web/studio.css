@@ -461,3 +461,5 @@
 .amm-style-previews figure{margin:0}
 .amm-style-previews img{width:100%;border-radius:var(--amm-radius);background:var(--amm-raised)}
 .amm-style-previews figcaption{color:var(--amm-muted);font-size:12px;margin-top:4px}
+.amm-control-image{align-items:center}
+.amm-control-thumb{width:56px;height:56px;object-fit:contain;border-radius:var(--amm-radius-sm);background:var(--amm-raised)}

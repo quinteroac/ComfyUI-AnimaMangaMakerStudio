@@ -9,7 +9,7 @@ It is a separate project derived from [Manga Maker Studio](https://github.com/qu
 ## What you can do
 
 - Organize references, panels and pages with preserved originals and versions.
-- Generate with **Anima** (text to image) or **Anima Ref** (one to four reference images for character and style), using Anima Turbo by default. Models, encoders, VAEs and LoRAs stay configurable globally and per operation.
+- Generate with **Anima** (text to image), **Anima Ref** (one to four reference images for character and style) or **Anima SnapRef** (one to three pictures of one character), using Anima Turbo by default. Add ControlNet-LLLite controls such as 3D pose or regional maps, and mix artist styles with the Anima Artist Mixer. Models, encoders, VAEs, LoRAs and control models stay configurable globally and per operation.
 - Set a project style with Animadex tags and Stylebook prose, and preview it.
 - Draw in Klecks with editable layers and PSD saving, render drafts with **Sketch to Art**, lay out a scene with **BBox to Image**, and add screentones with **Art to Manga Panel**.
 - Compose pages with rectangular or polygonal panels, speech/thought bubbles, local fonts and PNG export.

@@ -523,7 +523,7 @@ try {
     const globalModels = [['Diffusion model', 'model', list('UNETLoader', 'unet_name').at(-1)], ['Text encoder', 'encoder', list('CLIPLoader', 'clip_name').at(-1)], ['VAE', 'vae', list('VAELoader', 'vae_name').at(-1)]];
     await studio.getByRole('button', { name: 'Settings', exact: true }).click();
     assert.equal(await globalDialog.getByLabel('Global model engine', { exact: true }).inputValue(), 'anima_ref');
-    assert.equal(await globalDialog.getByLabel('Global model engine', { exact: true }).locator('option').count(), 2);
+    assert.equal(await globalDialog.getByLabel('Global model engine', { exact: true }).locator('option').count(), 3);
     for (const [label, , value] of globalModels) await globalDialog.getByLabel(label, { exact: true }).fill(value);
     await globalDialog.locator('summary').filter({ hasText: /^Sampling$/ }).click();
     await globalDialog.getByLabel('Steps', { exact: true }).fill('6');

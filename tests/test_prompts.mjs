@@ -9,7 +9,7 @@ const settings = {}; globalModels(settings);
 // Fixture selections stand in for weights that are not installed where the tests run.
 const configFor = (engine, values = {}) => {
     const cfg = inheritModels({ ...initialSettings(engine), ...values }, settings.models[engine], engine);
-    for (const [key, node, field] of [['model', 'UNETLoader', 'unet_name'], ['encoder', 'CLIPLoader', 'clip_name'], ['vae', 'VAELoader', 'vae_name'], ['ref_adapter_lora', 'AnimaRefAdapterLoader', 'lora_name']]) {
+    for (const [key, node, field] of [['model', 'UNETLoader', 'unet_name'], ['encoder', 'CLIPLoader', 'clip_name'], ['vae', 'VAELoader', 'vae_name'], ['ref_adapter_lora', 'AnimaRefAdapterLoader', 'lora_name'], ['snapref_adapter', 'SnapRef', 'adapter']]) {
         if (cfg[key] && !options(defs, node, field).includes(cfg[key])) cfg[key] = options(defs, node, field)[0];
     }
     return cfg;
@@ -66,6 +66,58 @@ for (const [op, images] of [['references', ['a.png']], ['panels', ['a.png', 'b.p
     assert.equal(built.graph[node('SamplerCustomAdvanced').inputs.latent_image[0]].class_type, op === 'sketch' ? 'VAEEncode' : 'AnimaRefLatent');
     assert.equal(built.graph[built.outputNode].class_type, op === 'sketch' ? 'PreviewImage' : 'SaveImage');
     jobs.push({ engine: 'anima_ref', op, count: images.length, ...built });
+}
+
+// Anima SnapRef: one to three pictures of one character on the SnapRef node, then the plain KSampler.
+const snapref = configFor('anima_snapref', { prompt: '1girl, walking, city street', aspect_ratio: '3:4', model_overrides: { snapref_mode: 'cs', snapref_strength: .5, snapref_fidelity: .8 } });
+assert.throws(() => buildPrompt(defs, 'panels', 'anima_snapref', snapref, [], 'snapref'), /at least one reference/);
+assert.throws(() => buildPrompt(defs, 'panels', 'anima_snapref', snapref, ['a.png', 'b.png', 'c.png', 'd.png'], 'snapref'), /up to 3/);
+for (const images of [['a.png'], ['a.png', 'b.png', 'c.png']]) {
+    const built = buildPrompt(defs, 'panels', 'anima_snapref', snapref, images, 'snapref'), graph = built.graph;
+    const [id, node] = Object.entries(graph).find(([, n]) => n.class_type === 'SnapRef');
+    assert.deepEqual(['image', 'image_2', 'image_3'].filter(key => node.inputs[key]).map(key => graph[node.inputs[key][0]].inputs.image), images);
+    assert.equal(node.inputs.mode, 'cs'); assert.equal(node.inputs.strength, .5); assert.equal(node.inputs.fidelity, .8);
+    const sampler = Object.values(graph).find(n => n.class_type === 'KSampler');
+    assert.equal(sampler.inputs.sampler_name, 'euler');
+    let model = sampler.inputs.model; while (model[0] !== id) model = graph[model[0]].inputs.model;
+    assert(!Object.values(graph).some(n => ['AnimaRefGuider', 'ImageStitch', 'AnimaSafePAG'].includes(n.class_type)));
+    jobs.push({ engine: 'anima_snapref', op: 'panels', count: images.length, ...built });
+}
+
+// LLLite controls follow the LoRAs and come before the reference adapter; the Ref Adapter needs the CharRef-LLLite variants.
+const patches = options(defs, 'ModelPatchLoader', 'name').filter(name => name.startsWith('anima_'));
+const controls = [{ enabled: true, patch: patches[0], image_path: 'pose.png', strength: 1.2, start: 0, end: 1 },
+    { enabled: true, patch: patches[1] || patches[0], image_path: 'regions.png', strength: 1, start: 0, end: .3 },
+    { enabled: false, patch: patches[0], image_path: 'off.png', strength: 1, start: 0, end: 1 }, { enabled: true, patch: patches[0], image: 'unstaged', strength: 1, start: 0, end: 1 }];
+const lora = options(defs, 'LoraLoaderModelOnly', 'lora_name')[0];
+for (const [engine, images, apply, loader] of [['anima', [], 'AnimaLLLiteApply', null], ['anima_snapref', ['a.png'], 'AnimaLLLiteApply', 'SnapRef'],
+    ['anima_ref', ['a.png'], 'ExperimentalAnimaLLLiteRefApply', 'ExperimentalAnimaRefAdapterControlsLoader']]) {
+    const built = buildPrompt(defs, 'panels', engine, { ...configFor(engine, { prompt: 'x' }), controls, loras: [{ name: lora, model: .5, enabled: true }] }, images, 'controls'), graph = built.graph;
+    const applied = Object.entries(graph).filter(([, n]) => n.class_type === apply);
+    assert.equal(applied.length, 2, `${engine}: enabled controls with a staged image`);
+    assert.deepEqual(applied.map(([, n]) => graph[n.inputs.image[0]].inputs.image), ['pose.png', 'regions.png']);
+    assert.deepEqual(applied.map(([, n]) => graph[n.inputs.model_patch[0]].inputs.name), [controls[0].patch, controls[1].patch]);
+    assert.equal(applied[0][1].inputs.strength, 1.2); assert.equal(applied[1][1].inputs.end_percent, .3);
+    assert.equal(graph[applied[0][1].inputs.model[0]].class_type, 'LoraLoaderModelOnly');
+    assert.deepEqual(applied[1][1].inputs.model, [applied[0][0], 0]);
+    if (loader) assert.deepEqual(Object.values(graph).find(n => n.class_type === loader).inputs.model, [applied[1][0], 0]);
+    assert(!Object.values(graph).some(n => n.class_type === 'AnimaRefAdapterLoader'));
+    jobs.push({ engine, op: 'panels', count: images.length, ...built });
+}
+assert(Object.values(buildPrompt(defs, 'panels', 'anima_ref', animaRef, ['a.png'], 'plain').graph).some(n => n.class_type === 'AnimaRefAdapterLoader'));
+
+// Anima Artist Mixer replaces the positive text encoding and wraps the model.
+for (const [engine, images, op] of [['anima', [], 'panels'], ['anima_ref', ['a.png'], 'panels'], ['anima', [], 'bbox']]) {
+    const built = buildPrompt(defs, op, engine, { ...configFor(engine, { prompt: '1girl, rain' }), artist_chain: ' @kubo tite, @mineru::0.6 ', artist_strength: 1.5, boxes: [] }, images, 'artists'), graph = built.graph;
+    const [mixerId, mixer] = Object.entries(graph).find(([, n]) => n.class_type === 'AnimaArtistAdapterMixer');
+    const pack = graph[mixer.inputs.artist_pack[0]];
+    assert.equal(pack.inputs.artist_chain, '@kubo tite, @mineru::0.6'); assert.equal(mixer.inputs.strength, 1.5);
+    if (op === 'bbox') assert.equal(graph[pack.inputs.base_prompt[0]].class_type, 'MOSSImageLayoutPrompt');
+    else assert.equal(pack.inputs.base_prompt, '1girl, rain');
+    const consumer = Object.values(graph).find(n => ['KSampler', 'AnimaRefGuider'].includes(n.class_type));
+    assert.deepEqual(consumer.inputs.positive, [mixerId, 1]); assert.deepEqual(consumer.inputs.model, [mixerId, 0]);
+    assert.equal(Object.values(graph).filter(n => n.class_type === 'CLIPTextEncode').length, 1, 'Only the negative prompt is plain text');
+    jobs.push({ engine, op, count: images.length, ...built });
 }
 
 // Anima receives the MOSS-Image layout prompt through its own text encoder.
@@ -142,4 +194,4 @@ assert.equal(composePrompt({ prompt_sections: {}, prompt: '' }), '');
 assert.throws(() => buildPrompt({}, 'panels', 'anima', configFor('anima'), [], crypto.randomUUID()), /Missing node/);
 
 if (process.argv[3]) fs.writeFileSync(process.argv[3], JSON.stringify(jobs));
-console.log(`${jobs.length} Anima graphs passed: Turbo sampling, negative prompt, LoRA order, Anima Ref stitching and PAG, sketch latent, bbox layout prompts, chroma key, style previews and text tasks.`);
+console.log(`${jobs.length} Anima graphs passed: Turbo sampling, negative prompt, LoRA order, Anima Ref stitching and PAG, SnapRef pictures, LLLite controls per engine, Artist Mixer, sketch latent, bbox layout prompts, chroma key, style previews and text tasks.`);

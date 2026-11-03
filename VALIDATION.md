@@ -1,3 +1,9 @@
+# Validation — November 2, 2026 · graph builder
+
+- **24 Anima graphs** match the running ComfyUI's input contracts and linked output types, adding Anima SnapRef with one and three pictures, LLLite controls on Anima, SnapRef and Anima Ref (CharRef-LLLite nodes, after the LoRAs and before the adapter, disabled and unstaged controls skipped), and the Artist Mixer feeding `KSampler` and `AnimaRefGuider`, including a BBox layout prompt as its base prompt.
+- **Chromium:** a panel with a gallery control image and an artist chain queues `AnimaLLLiteApply` and `AnimaArtistPack`; SnapRef asks for one to three references; the global engine list has three engines. `browser.mjs`, `browser_sketch.mjs` and `browser_story.mjs` still pass.
+- Python, story, manga and MCP tests pass. No weights were loaded and no actual inference was run.
+
 # Validation — November 2, 2026
 
 First Anima-only release, derived from Manga Maker Studio at 613aa8d plus its Style workspace work in progress.

@@ -20,13 +20,22 @@ An agent can also apply and verify these settings using the included [anima-mang
 | Engine | Workflow | Defaults |
 | --- | --- | --- |
 | **Anima** | Text to image: `CLIPTextEncode` positive and negative, `EmptyLatentImage`, `KSampler` | Anima Turbo, 8 steps, CFG 1, ER SDE, Simple |
-| **Anima Ref** | Follows `anima_ref_adapter_pag_multi`: references stitched side by side into one image, `AnimaRefAdapterLoader`, `AnimaRefLatent`, `AnimaRefGuider` and optional Safe PAG | Anima Turbo, 8 steps, CFG 1, Euler, Simple, reference guidance 1, PAG 1.3 |
+| **Anima Ref** | Follows the CharRef workflows: references stitched side by side into one image, `AnimaRefAdapterLoader` (v2 r64), `AnimaRefLatent`, `AnimaRefGuider` and optional Safe PAG | Anima Turbo, 8 steps, CFG 1, Euler, Simple, reference guidance 1, PAG 1.3 |
+| **Anima SnapRef** | One to three pictures of one character on the `SnapRef` node, then `KSampler`. **Character** keeps the style from the model and prompt; **Character & style** also takes the art style | Anima Turbo, 8 steps, CFG 1, Euler, Simple, `snapref_v2a_pre2`, Character, attention 0, fidelity 1 |
 
-Both use `qwen_3_06b_base.safetensors` with loading type `stable_diffusion` and `qwen_image_vae.safetensors`. These defaults are written in `web/models.js`; every field stays editable. **Use default models and sampling**, under **Models and advanced settings** or in global settings, restores them for that engine. A different Anima checkpoint, such as Anima Base or a manga finetune, usually needs more steps and a higher CFG; set them together with the model.
+All three use `qwen_3_06b_base.safetensors` with loading type `stable_diffusion` and `qwen_image_vae.safetensors`. These defaults are written in `web/models.js`; every field stays editable. **Use default models and sampling**, under **Models and advanced settings** or in global settings, restores them for that engine. A different Anima checkpoint, such as Anima Base or a manga finetune, usually needs more steps and a higher CFG; set them together with the model.
 
 Fields changed in an operation override only that value. **Use global model configuration** clears these individual overrides. Presets store explicit overrides: missing, empty or null model fields inherit the current global value. A preset with explicit values keeps them even when the global configuration changes.
 
-LoRAs are applied to the model only (`LoraLoaderModelOnly`), in list order, after the Ref Adapter for Anima Ref. **LoRA presets** save and load a LoRA list per operation. The extension cannot infer every incompatibility between checkpoints, encoders, VAEs and LoRAs; errors and metadata preserve the operation context, prompt, models, seeds and LoRAs.
+The model chain is: LoRAs, LLLite controls, the reference adapter (Anima Ref or SnapRef), then attention, Safe PAG and the Artist Mixer. LoRAs are applied to the model only (`LoraLoaderModelOnly`), in list order. **LoRA presets** save and load a LoRA list per operation.
+
+## Controls · LLLite
+
+In References and Panels, **Controls · LLLite** adds Anima ControlNet-LLLite models, each with a control image chosen from the project: for example a 3D pose render for `anima_3dpose_outline_7000` or a flat color map for `anima_regional_4335`. Each control has its model from `models/model_patches`, strength and the start and end of its effect as fractions of the denoising (a regional map typically ends around 0.3). The control image is center-cropped to the output size, so keep its aspect ratio close to the output's. Controls are stored with the operation and its presets; a control without an image is skipped. With Anima Ref, controls use the ComfyUI-Anima-CharRef-LLLite nodes so the reference frame does not receive the control.
+
+## Artist Mixer
+
+**Artist Mixer**, below the prompt, takes a comma-separated chain of Animadex artists, such as `@kubo tite, @mineru::0.6`, and mixes their styles into the model and the prompt conditioning with the Anima Artist Mixer. **Browse Animadex artists** adds artists to the chain. An empty chain uses plain text encoding. The extension cannot infer every incompatibility between checkpoints, encoders, VAEs and LoRAs; errors and metadata preserve the operation context, prompt, models, seeds and LoRAs.
 
 ## Prompts and presets
 
@@ -42,6 +51,6 @@ In **Settings → Text generator**, select the CLIP, loading type, device and ou
 
 ## Output size
 
-Size is selected through **Aspect ratio** and **Resolution · MP** (1 MP = 1,000,000 pixels). With Anima Ref, **Output size** offers **Inherit from original** (the first reference) or **Manual · AR and MP**. Anima generates at multiples of 8 and Anima Ref at multiples of 16. Pages are exported in whole pixels.
+Size is selected through **Aspect ratio** and **Resolution · MP** (1 MP = 1,000,000 pixels). With Anima Ref and SnapRef, **Output size** offers **Inherit from original** (the first reference) or **Manual · AR and MP**. Anima and SnapRef generate at multiples of 8 and Anima Ref at multiples of 16. Pages are exported in whole pixels.
 
 See [Drawing](drawing.md) for the settings that affect the Klecks workflows, and [Projects and storage](projects.md) for migration and persistence.

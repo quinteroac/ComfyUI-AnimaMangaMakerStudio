@@ -1,16 +1,17 @@
 import { initialSettings } from './prompts.js';
 
 export const modelFields = ['model', 'encoder', 'vae', 'encoder_type', 'weight_dtype', 'encoder_device', 'attention', 'steps', 'cfg', 'sampler', 'scheduler',
-    'ref_adapter_lora', 'ref_guidance', 'pag_scale'];
+    'ref_adapter_lora', 'ref_guidance', 'pag_scale', 'snapref_adapter', 'snapref_mode', 'snapref_strength', 'snapref_fidelity'];
 const defined = value => value !== undefined && value !== null && value !== '';
 export const modelValues = value => Object.fromEntries(modelFields.filter(key => defined(value?.[key])).map(key => [key, structuredClone(value[key])]));
 
-// Anima Turbo defaults from the local anima_ref_adapter_pag_multi and Anima-Komikku workflows; every field stays editable in Settings.
+// Anima Turbo defaults from the local anima_charref_* and anima_snapref_* workflows; every field stays editable in Settings.
 const animaModels = { model: 'anima/anima-turbo-v1.0-int8-convrot.safetensors', encoder: 'qwen_3_06b_base.safetensors', vae: 'qwen_image_vae.safetensors',
     encoder_type: 'stable_diffusion', weight_dtype: 'default', encoder_device: 'default', steps: 8, cfg: 1 };
 export const profiles = {
     anima: { name: 'Anima', settings: { ...animaModels, sampler: 'er_sde', scheduler: 'simple' } },
-    anima_ref: { name: 'Anima Ref', settings: { ...animaModels, sampler: 'euler', scheduler: 'simple', ref_adapter_lora: 'anima_ref_adapter_pilot_r32.safetensors', ref_guidance: 1, pag_scale: 1.3 } },
+    anima_ref: { name: 'Anima Ref', settings: { ...animaModels, sampler: 'euler', scheduler: 'simple', ref_adapter_lora: 'anima_ref_adapter_v2_r64.safetensors', ref_guidance: 1, pag_scale: 1.3 } },
+    anima_snapref: { name: 'Anima SnapRef', settings: { ...animaModels, sampler: 'euler', scheduler: 'simple', snapref_adapter: 'snapref_v2a_pre2.safetensors', snapref_mode: 'char', snapref_strength: 0, snapref_fidelity: 1 } },
 };
 
 export function globalModels(settings) {

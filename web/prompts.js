@@ -97,13 +97,16 @@ export function options(defs, node, field) {
     return Array.isArray(spec?.[0]) ? spec[0] : spec?.[1]?.options || [];
 }
 
+// Reference engines and how many pictures each takes: Anima Ref stitches up to four, SnapRef takes up to three of one character.
+export const referenceLimits = { anima_ref: 4, anima_snapref: 3 };
+
 export function defaultAttention(defs, engine) {
-    if (engine !== 'anima_ref') return '';
+    if (!referenceLimits[engine]) return '';
     return options(defs, 'ModelAttentionBackend', 'attention').includes('comfy kitchen attention') ? 'comfy kitchen attention' : 'pytorch attention';
 }
 
 // Chroma key asks for a flat background and removes it with VNCCS Chroma Key.
-export const alphaMethods = { anima: ['chromakey'], anima_ref: ['chromakey'] };
+export const alphaMethods = { anima: ['chromakey'], anima_ref: ['chromakey'], anima_snapref: ['chromakey'] };
 const alphaBackground = {
     chromakey: 'Isolated on a completely flat, uniform, solid dark indigo purple background (hex #1E0050) with no gradient, no shadow and no texture.',
 };
@@ -122,11 +125,13 @@ export const initialSettings = (engine) => ({
     engine, model: '', encoder: '', vae: '', encoder_type: 'stable_diffusion',
     weight_dtype: 'default', encoder_device: 'default', prompt: '', prompt_sections: {},
     aspect_ratio: '1:1', megapixels: 1, seed: 0, random_seed: true, steps: 8, cfg: 1, denoise: 0.6,
-    attention: '', references: [], loras: [], max_length: 512, alpha: '',
+    attention: '', references: [], loras: [], controls: [], artist_chain: '', artist_strength: 1, max_length: 512, alpha: '',
     ...(engine === 'anima' ? { sampler: 'er_sde', scheduler: 'simple',
         negative: 'score_6, score_5, score_4, worst quality, low quality, text, censored, deformed, bad hand, blurry, (watermark),' } : {}),
-    ...(engine === 'anima_ref' ? { sampler: 'euler', scheduler: 'simple', ref_adapter_lora: 'anima_ref_adapter_pilot_r32.safetensors', ref_guidance: 1, pag_scale: 1.3,
+    ...(referenceLimits[engine] ? { sampler: 'euler', scheduler: 'simple',
         negative: 'worst quality, low quality, score_1, score_2, score_3, blurry, jpeg artifacts, chromatic aberration, bad anatomy, bad hands, extra arms, extra fingers, missing fingers, text, watermark, signature, artist name, multiple views, split screen, comic, 2koma, 4koma' } : {}),
+    ...(engine === 'anima_ref' ? { ref_adapter_lora: 'anima_ref_adapter_v2_r64.safetensors', ref_guidance: 1, pag_scale: 1.3 } : {}),
+    ...(engine === 'anima_snapref' ? { snapref_adapter: 'snapref_v2a_pre2.safetensors', snapref_mode: 'char', snapref_strength: 0, snapref_fidelity: 1 } : {}),
 });
 
 export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) {
@@ -167,33 +172,38 @@ export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) 
     let model = add('UNETLoader', { unet_name: check('UNETLoader', 'unet_name', config.model, 'Model'), weight_dtype: config.weight_dtype });
     const clip = load(config.encoder, config.encoder_type);
     const vae = add('VAELoader', { vae_name: check('VAELoader', 'vae_name', config.vae, 'VAE') });
-    if (engine === 'anima_ref') {
-        // Follows the anima_ref_adapter_pag_multi workflow: the references take character and style, the prompt gives the scene.
-        if (!images.length) throw new Error('Anima Ref requires at least one reference image.');
-        model = add('AnimaRefAdapterLoader', { model, lora_name: check('AnimaRefAdapterLoader', 'lora_name', config.ref_adapter_lora, 'Ref Adapter LoRA'), strength: 1, ref_offset_h: 1 });
-    }
+    const limit = referenceLimits[engine];
+    if (limit && !images.length) throw new Error(`${engine === 'anima_ref' ? 'Anima Ref' : 'SnapRef'} requires at least one reference image.`);
+    if (limit && images.length > limit) throw new Error(`${engine === 'anima_ref' ? 'Anima Ref' : 'SnapRef'} supports up to ${limit} reference images.`);
+    if (!limit && images.length) throw new Error('This workflow generates from text. Use Anima Ref or SnapRef to connect visual references.');
+    // Chain order follows the CharRef-LLLite workflows: LoRAs, LLLite controls, then the reference adapter.
     for (const lora of config.loras.filter(l => l.enabled)) {
         model = add('LoraLoaderModelOnly', { model, lora_name: check('LoraLoaderModelOnly', 'lora_name', lora.name, 'LoRA'), strength_model: Number(lora.model) });
     }
-    if (engine === 'anima_ref') model = add('ModelComputeDtype', { model, dtype: 'bf16' });
+    // Controls are staged with the job; operations that stage no control image (sketch, bbox, previews) run without them.
+    const controls = (config.controls || []).filter(c => c.enabled && c.image_path);
+    for (const control of controls) {
+        // The Ref Adapter adds the reference frame to the sequence, so its LLLite must skip that frame (ComfyUI-Anima-CharRef-LLLite).
+        model = add(engine === 'anima_ref' ? 'ExperimentalAnimaLLLiteRefApply' : 'AnimaLLLiteApply', { model,
+            model_patch: add('ModelPatchLoader', { name: check('ModelPatchLoader', 'name', control.patch, 'Control model') }), image: add('LoadImage', { image: control.image_path }),
+            strength: Number(control.strength), start_percent: Number(control.start), end_percent: Number(control.end) });
+    }
+    if (engine === 'anima_ref') {
+        const loader = controls.length ? 'ExperimentalAnimaRefAdapterControlsLoader' : 'AnimaRefAdapterLoader';
+        model = add(loader, { model, lora_name: check(loader, 'lora_name', config.ref_adapter_lora, 'Ref Adapter LoRA'), strength: 1, ref_offset_h: 1 });
+    }
+    if (engine === 'anima_snapref') {
+        // SnapRef's extra pictures are more views of the same character.
+        model = add('SnapRef', { model, clip, vae, ...Object.fromEntries(images.map((image, i) => [['image', 'image_2', 'image_3'][i], image])),
+            adapter: check('SnapRef', 'adapter', config.snapref_adapter, 'SnapRef adapter'), mode: config.snapref_mode, ref_in_uncond: false, ref_megapixels: 1,
+            strength: Number(config.snapref_strength), ref_caption: '', ref_guidance_on: false, ref_guidance: 4.5, correction: 'apg', ref_end: 1,
+            use_batch: false, multi_layout: 'separate', weight_1: 1, weight_2: 1, weight_3: 1, fidelity: Number(config.snapref_fidelity) });
+    }
+    if (limit) model = add('ModelComputeDtype', { model, dtype: 'bf16' });
     const attention = config.attention || defaultAttention(defs, engine);
     if (attention) model = add('ModelAttentionBackend', { model, attention: check('ModelAttentionBackend', 'attention', attention, 'Attention') });
-    if (engine === 'anima_ref') {
-        if (Number(config.pag_scale)) model = add('AnimaSafePAG', { model, scale: Number(config.pag_scale), block_indices: '18', perturbation_strength: 0.75, head_indices: '',
-            start_percent: 0.3, end_percent: 0.8, rescale: 0.2, rescale_mode: 'full' });
-        // The adapter reads one reference image, so several references are placed side by side.
-        const reference = images.slice(1).reduce((image1, image2) => add('ImageStitch', { image1, image2, direction: 'right', match_image_size: true, spacing_width: 0, spacing_color: 'white' }), images[0]);
-        const encoded = add('AnimaRefLatent', { image: reference, vae, ...imageDimensions(config, 16), fill: 255 });
-        const positive = add('CLIPTextEncode', { clip, text: prompt }), negative = add('CLIPTextEncode', { clip, text: config.negative });
-        const guider = add('AnimaRefGuider', { model, positive, negative, ref_latent: encoded, cfg: Number(config.cfg), ref_guidance: Number(config.ref_guidance ?? 1), correction: 'apg', rescale_phi: 0.5 });
-        // Sketch to Art also starts from the drawing, letterboxed to the reference latent size.
-        const sketching = operation === 'sketch';
-        const latent = sketching ? add('VAEEncode', { pixels: [encoded[0], 2], vae }) : [encoded[0], 1];
-        const sigmas = add('BasicScheduler', { model, scheduler: config.scheduler, steps: Number(config.steps), denoise: sketching ? Number(config.denoise ?? 0.6) : 1 });
-        const sampled = add('SamplerCustomAdvanced', { noise: add('RandomNoise', { noise_seed: Number(config.seed) }), guider, sampler: add('KSamplerSelect', { sampler_name: config.sampler }), sigmas, latent_image: latent });
-        return { graph, outputNode: save(decode(sampled, vae))[0] };
-    }
-    if (images.length) throw new Error('This workflow generates from text. Use Anima Ref to connect visual references.');
+    if (engine === 'anima_ref' && Number(config.pag_scale)) model = add('AnimaSafePAG', { model, scale: Number(config.pag_scale), block_indices: '18', perturbation_strength: 0.75, head_indices: '',
+        start_percent: 0.3, end_percent: 0.8, rescale: 0.2, rescale_mode: 'full' });
     let text = prompt;
     if (operation === 'bbox') {
         // Boxes are stored as canvas fractions and written in the MOSS-Image layout format, like the official bbox template; Anima receives it as prompt text.
@@ -204,8 +214,28 @@ export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) 
         text = add('MOSSImageLayoutPrompt', { prompt, element: [boxes[0], 2], ...size,
             character_boxes: config.boxes.flatMap((box, i) => box.type === 'character' ? [i + 1] : []).join(', ') });
     }
-    const positive = add('CLIPTextEncode', { clip, text }), negative = add('CLIPTextEncode', { clip, text: config.negative });
-    const samples = add('KSampler', { model, positive, negative, latent_image: add('EmptyLatentImage', { ...size, batch_size: 1 }), seed: Number(config.seed), steps: Number(config.steps),
-        cfg: Number(config.cfg), sampler_name: config.sampler, scheduler: config.scheduler, denoise: 1 });
-    return { graph, outputNode: save(decode(samples, vae))[0] };
+    let positive;
+    if (config.artist_chain?.trim()) {
+        // Anima Artist Mixer: the artists' style is mixed into the model and the prompt conditioning.
+        const mixer = add('AnimaArtistAdapterMixer', { model, artist_pack: add('AnimaArtistPack', { clip, artist_chain: config.artist_chain.trim(), base_prompt: text }),
+            strength: Number(config.artist_strength ?? 1), normalize_weights: true, alignment_mode: 'base_anchored', enabled: true, apply_to_uncond: false, uncond_strength: 0 });
+        model = mixer; positive = [mixer[0], 1];
+    } else positive = add('CLIPTextEncode', { clip, text });
+    const negative = add('CLIPTextEncode', { clip, text: config.negative });
+    let sampled;
+    if (engine === 'anima_ref') {
+        // The adapter reads one reference image, so several references are placed side by side.
+        const reference = images.slice(1).reduce((image1, image2) => add('ImageStitch', { image1, image2, direction: 'right', match_image_size: true, spacing_width: 0, spacing_color: 'white' }), images[0]);
+        const encoded = add('AnimaRefLatent', { image: reference, vae, ...imageDimensions(config, 16), fill: 255 });
+        const guider = add('AnimaRefGuider', { model, positive, negative, ref_latent: encoded, cfg: Number(config.cfg), ref_guidance: Number(config.ref_guidance ?? 1), correction: 'apg', rescale_phi: 0.5 });
+        // Sketch to Art also starts from the drawing, letterboxed to the reference latent size.
+        const sketching = operation === 'sketch';
+        const latent = sketching ? add('VAEEncode', { pixels: [encoded[0], 2], vae }) : [encoded[0], 1];
+        const sigmas = add('BasicScheduler', { model, scheduler: config.scheduler, steps: Number(config.steps), denoise: sketching ? Number(config.denoise ?? 0.6) : 1 });
+        sampled = add('SamplerCustomAdvanced', { noise: add('RandomNoise', { noise_seed: Number(config.seed) }), guider, sampler: add('KSamplerSelect', { sampler_name: config.sampler }), sigmas, latent_image: latent });
+    } else {
+        sampled = add('KSampler', { model, positive, negative, latent_image: add('EmptyLatentImage', { ...size, batch_size: 1 }), seed: Number(config.seed), steps: Number(config.steps),
+            cfg: Number(config.cfg), sampler_name: config.sampler, scheduler: config.scheduler, denoise: 1 });
+    }
+    return { graph, outputNode: save(decode(sampled, vae))[0] };
 }

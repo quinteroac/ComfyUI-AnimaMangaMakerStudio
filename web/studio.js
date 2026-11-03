@@ -1,7 +1,7 @@
 import { api } from '../../scripts/api.js';
 import { uuid, el, button, iconButton, field, request, assetUrl, download, chooseFile, sizeControls } from './client.js';
 import { sizeSettings, sizeLabel } from './size.js';
-import { options, defaultAttention, alphaMethods, initialSettings, buildPrompt, composePrompt, promptSections, referencePrompt, parsePrompt, referencePresets, textGeneratorDefaults, textInstruction } from './prompts.js';
+import { options, defaultAttention, alphaMethods, referenceLimits, initialSettings, buildPrompt, composePrompt, promptSections, referencePrompt, parsePrompt, referencePresets, textGeneratorDefaults, textInstruction } from './prompts.js';
 import { newPage, normalizePage, PageEditor } from './editor.js';
 import { modelFields, profiles, globalModels, inheritModels, applyPreset, savedPreset } from './models.js';
 import { openDrawing } from './drawing.js';
@@ -11,7 +11,7 @@ import { assistantSettings } from './assistant.js';
 import { openStylePicker } from './style-picker.js';
 
 const spaces = { story: 'Story', style: 'Style', references: 'References', panels: 'Panels', design: 'Page layout' };
-const engines = { anima: 'Anima', anima_ref: 'Anima Ref' };
+const engines = { anima: 'Anima', anima_ref: 'Anima Ref', anima_snapref: 'Anima SnapRef' };
 const textTasks = { enhance: 'Enhance section', describe: 'Create reference prompt' };
 const clone = x => structuredClone(x);
 
@@ -253,6 +253,14 @@ export class Studio {
             }
             technical.append(adapter);
         }
+        if (engine === 'anima_snapref') {
+            const adapter = el('details', {}, el('summary', { text: 'SnapRef' }),
+                combo('SnapRef adapter', options(this.defs, 'SnapRef', 'adapter'), cfg.snapref_adapter, set('snapref_adapter')),
+                segmented('SnapRef mode', [['char', 'Character'], ['cs', 'Character & style']], cfg.snapref_mode, set('snapref_mode')),
+                slider('Reference attention · log scale, 0 = as trained', el('input', { type: 'number', value: cfg.snapref_strength, step: 0.1, onchange: e => set('snapref_strength')(Number(e.target.value)) }), [-3, 3]),
+                slider('Fidelity · lower follows the prompt more', el('input', { type: 'number', value: cfg.snapref_fidelity, step: 0.05, onchange: e => set('snapref_fidelity')(Number(e.target.value)) }), [0, 1]));
+            technical.append(adapter);
+        }
         technical.append(combo('Weight precision', options(this.defs, 'UNETLoader', 'weight_dtype'), cfg.weight_dtype, set('weight_dtype')),
             combo('Encoder device', options(this.defs, 'CLIPLoader', 'device'), cfg.encoder_device, set('encoder_device')));
         if (this.defs.ModelAttentionBackend) technical.append(combo('Attention backend', options(this.defs, 'ModelAttentionBackend', 'attention'), cfg.attention || defaultAttention(this.defs, engine), set('attention')));
@@ -359,9 +367,55 @@ export class Studio {
     }
     essentials(host, cfg, space) {
         const changed = () => this.presetChanged(space);
-        this.promptControls(host, cfg, changed, space);
+        this.promptControls(host, cfg, changed, space); this.artistControls(host, cfg, changed);
         host.append(el('div', { class: 'amm-size-controls' })); this.resolutionControls(host, cfg, space);
         this.samplingControls(host, cfg, cfg.engine, changed, space); this.modelControls(host, cfg, cfg.engine, changed, false, space);
+    }
+    // Anima Artist Mixer: artists from the chain are mixed into the model; an empty chain keeps plain text encoding.
+    artistControls(host, cfg, changed) {
+        const details = el('details', {}, el('summary', { text: 'Artist Mixer' }));
+        const describe = () => summarize(details, cfg.artist_chain?.trim() ? cfg.artist_chain.trim().slice(0, 40) : 'Off');
+        const chain = el('textarea', { value: cfg.artist_chain || '', rows: 2, 'aria-label': 'Artist chain', placeholder: '@artist, @another artist::0.6',
+            oninput: e => { cfg.artist_chain = e.target.value; describe(); changed(); } });
+        details.append(field('Artist chain', chain, 'Comma-separated Animadex artists, optionally weighted as @name::0.6. Requires Anima-Artist-Mixer.'),
+            iconButton('Browse Animadex artists', 'image', () => openStylePicker(this, 'animadex', (key, update) => {
+                if (key !== 'style') return;
+                chain.value = cfg.artist_chain = update(chain.value); describe(); changed();
+            }), {}, true),
+            slider('Mixer strength', el('input', { type: 'number', 'aria-label': 'Mixer strength', value: cfg.artist_strength ?? 1, step: 0.05, onchange: e => { cfg.artist_strength = Number(e.target.value); changed(); } }), [0, 4]));
+        describe(); host.append(details);
+    }
+    // ControlNet-LLLite controls: each pairs a model patch with a control image from the project.
+    controlStack(host, cfg, space) {
+        cfg.controls ||= [];
+        const changed = () => this.presetChanged(space);
+        const details = el('details', {}, el('summary', { text: 'Controls · LLLite' }));
+        const rows = el('div');
+        const refresh = () => {
+            summarize(details, `${cfg.controls.filter(c => c.enabled).length} enabled`);
+            rows.replaceChildren(...cfg.controls.map((c, index) => {
+                const asset = this.project.assets.find(a => a.id === c.image);
+                const number = (label, key, range, step) => slider(label, el('input', { type: 'number', 'aria-label': label, value: c[key], step, onchange: e => { c[key] = Number(e.target.value); changed(); } }), range);
+                return el('div', { class: `amm-lora${c.enabled ? '' : ' amm-disabled'}` },
+                    el('div', { class: 'amm-row' }, toggle('Enabled', el('input', { type: 'checkbox', checked: c.enabled, onchange: e => { c.enabled = e.target.checked; changed(); refresh(); } })),
+                        iconButton('Move control up', 'up', () => { [cfg.controls[index - 1], cfg.controls[index]] = [c, cfg.controls[index - 1]]; changed(); refresh(); }, { disabled: !index }),
+                        iconButton('Move control down', 'down', () => { [cfg.controls[index + 1], cfg.controls[index]] = [c, cfg.controls[index + 1]]; changed(); refresh(); }, { disabled: index === cfg.controls.length - 1 }),
+                        iconButton('Remove control', 'trash', () => { cfg.controls.splice(index, 1); changed(); refresh(); })),
+                    combo('Control model', options(this.defs, 'ModelPatchLoader', 'name'), c.patch, value => { c.patch = value; changed(); }),
+                    el('div', { class: 'amm-row amm-control-image' }, asset ? el('img', { src: assetUrl(this.project.id, asset.id, true), alt: asset.name, class: 'amm-control-thumb' }) : null,
+                        el('small', { text: asset ? `${asset.name}${asset.deleted ? ' · Trash' : asset.missing ? ' · Missing file' : ''}` : 'No control image' }),
+                        iconButton('Choose control image', 'image', () => {
+                            const picker = el('div', { class: 'amm-asset-picker' }, ...this.project.assets.filter(a => !a.deleted && !a.missing).map(a => this.assetPickerItem(a, () => {
+                                c.image = a.id; changed(); refresh(); this.jobs(); dialog.close();
+                            })));
+                            const dialog = this.modal('Choose control image', picker);
+                        })),
+                    number('Control strength', 'strength', [0, 2], 0.05), number('Start · fraction of denoising', 'start', [0, 1], 0.01), number('End · fraction of denoising', 'end', [0, 1], 0.01));
+            }));
+        };
+        details.append(rows, iconButton('Add control', 'plus', () => { cfg.controls.push({ enabled: true, patch: '', image: '', strength: 1, start: 0, end: 1 }); changed(); refresh(); }, {}, true),
+            el('small', { text: 'Anima ControlNet-LLLite models from models/model_patches, such as a 3D pose render or a regional color map as the control image. The image is center-cropped to the output size. With Anima Ref, controls need ComfyUI-Anima-CharRef-LLLite.' }));
+        refresh(); host.append(details);
     }
     runBar(host, cfg, space, label, operation = space) {
         host.append(el('div', { class: 'amm-run-bar' }, seed('Seed', cfg, () => this.presetChanged(space), 'Random seed for each generation'),
@@ -460,7 +514,7 @@ export class Studio {
     }
     resolutionControls(host, cfg, space) {
         const box = host.querySelector('.amm-size-controls');
-        const id = cfg.engine === 'anima_ref' ? cfg.references[0] : null;
+        const id = referenceLimits[cfg.engine] ? cfg.references[0] : null;
         const source = this.project.assets.find(a => a.id === id);
         const inherited = !!source && cfg.size_mode !== 'manual';
         const changed = () => this.presetChanged(space);
@@ -470,7 +524,8 @@ export class Studio {
             el('small', { text: inherited ? `Inherited from ${source.name}, the first reference.` : 'Select the aspect ratio and resolution in megapixels.' }));
     }
     references(host, space, cfg, slot = host) {
-        if (cfg.engine === 'anima') { slot.append(el('small', { text: 'Text-to-image workflow. Reuse a saved reference prompt from its image menu to guide generation.' })); return; }
+        const limit = referenceLimits[cfg.engine];
+        if (!limit) { slot.append(el('small', { text: 'Text-to-image workflow. Reuse a saved reference prompt from its image menu to guide generation.' })); return; }
         const box = el('details', { open: true }, el('summary', { text: 'Connected visual references' }));
         const list = el('div', { class: 'amm-reference-strip' });
         const refresh = () => {
@@ -496,13 +551,15 @@ export class Studio {
         box.append(list, iconButton('Choose references', 'link', () => {
             const items = this.project.assets.filter(a => !a.deleted && !a.missing);
             const picker = el('div', { class: 'amm-asset-picker' });
-            const update = () => { for (const b of picker.children) b.disabled = cfg.references.length >= 4 && !cfg.references.includes(b.dataset.assetId); };
+            const update = () => { for (const b of picker.children) b.disabled = cfg.references.length >= limit && !cfg.references.includes(b.dataset.assetId); };
             picker.append(...items.map(a => this.assetPickerItem(a, () => {
-                if (!cfg.references.includes(a.id) && cfg.references.length < 4) { cfg.references.push(a.id); this.presetChanged(space); }
+                if (!cfg.references.includes(a.id) && cfg.references.length < limit) { cfg.references.push(a.id); this.presetChanged(space); }
                 refresh(); update(); this.jobs();
             }))); update(); this.modal('Connect references', picker);
         }, {}, true));
-        box.append(el('small', { text: 'Anima Ref: connect one to four references; they are placed side by side as one reference. Character and style come from them, so describe only the scene, pose and framing in the prompt.' }));
+        box.append(el('small', { text: cfg.engine === 'anima_ref'
+            ? 'Anima Ref: connect one to four references; they are placed side by side as one reference. Character and style come from them, so describe only the scene, pose and framing in the prompt.'
+            : 'SnapRef: connect one to three pictures of the same character. Character mode keeps the style from the model and prompt; Character & style also takes the art style.' }));
         slot.append(box);
     }
     assetPickerItem(a, action) { const b = button('', action, { 'data-asset-id': a.id }); b.append(el('img', { src: assetUrl(this.project.id, a.id, true), alt: a.name, loading: 'lazy' }), el('span', { text: `${a.name} · ${a.kind}` })); return b; }
@@ -521,8 +578,8 @@ export class Studio {
         this.engineSelect(controls, space);
         const cfg = this.config(space); cfg.engine = this.state(space).engine;
         this.presets(controls, space, cfg, space === 'references' ? referencePresets : {});
-        const slot = el('div'); controls.append(slot);
-        this.essentials(controls, cfg, space); this.references(controls, space, cfg, slot);
+        const slot = el('div'), controlSlot = el('div'); controls.append(slot, controlSlot);
+        this.essentials(controls, cfg, space); this.references(controls, space, cfg, slot); this.controlStack(controlSlot, cfg, space);
         this.runBar(controls, cfg, space, space === 'references' ? 'Generate reference' : 'Generate panel');
         const gallery = el('section', { class: 'amm-gallery-area' }); view.append(controls, gallery); this.gallery(gallery, space === 'references' ? 'references' : 'panels', space); this.controlLayout(view, controls, space);
     }
@@ -591,7 +648,9 @@ export class Studio {
                     else addAction('Use as reference', 'link', () => {
                         const cfg = this.config(space);
                         if (!cfg.references.includes(a.id)) {
-                            if (cfg.references.length >= 4) { this.fail(new Error('Anima Ref supports up to four references. Remove one before adding another.')); return; }
+                            const limit = referenceLimits[cfg.engine];
+                            if (!limit) { this.fail(new Error('Choose Anima Ref or Anima SnapRef to connect references.')); return; }
+                            if (cfg.references.length >= limit) { this.fail(new Error(`${engines[cfg.engine]} supports up to ${limit} references. Remove one before adding another.`)); return; }
                             cfg.references.push(a.id); this.presetChanged(space);
                         }
                         this.saveSoon(); this.rebuild(space);
@@ -739,16 +798,20 @@ export class Studio {
             } else if (textTask) cfg.instruction = textInstruction(operation, this.styled(this.config(space)), section);
             if (!textTask) cfg.prompt_sections = this.styled(cfg).prompt_sections;
             if (cfg.random_seed) cfg.seed = Math.floor(Math.random() * 2 ** 48);
-            const ids = textTask ? operation === 'describe' ? [assetId] : [] : engine === 'anima_ref' ? cfg.references : [];
+            const references = textTask ? operation === 'describe' ? [assetId] : [] : referenceLimits[engine] ? cfg.references : [];
+            // Control images are staged with the references; a control without an image is skipped.
+            const controls = !textTask && ['references', 'panels'].includes(operation) ? (cfg.controls || []).filter(c => c.enabled && c.image) : [];
+            const ids = [...references, ...controls.map(c => c.image)];
             const unavailable = ids.find(id => !project.assets.some(a => a.id === id && !a.missing && !a.deleted));
             if (unavailable) {
                 const asset = project.assets.find(a => a.id === unavailable);
-                throw new Error(asset?.deleted ? `Selected image "${asset.name}" is in Trash. Restore it or remove it from the connected references.`
-                    : `Selected image "${asset?.name || unavailable}" is missing. Reimport it and select it again, or remove it from the connected references.`);
+                throw new Error(asset?.deleted ? `Selected image "${asset.name}" is in Trash. Restore it or remove it from the connected references or controls.`
+                    : `Selected image "${asset?.name || unavailable}" is missing. Reimport it and select it again, or remove it from the connected references or controls.`);
             }
-            if (!textTask && ids.length && cfg.size_mode !== 'manual') Object.assign(cfg, sizeSettings(project.assets.find(a => a.id === ids[0])), { size_mode: 'original' });
+            if (!textTask && references.length && cfg.size_mode !== 'manual') Object.assign(cfg, sizeSettings(project.assets.find(a => a.id === references[0])), { size_mode: 'original' });
             const paths = await request(`/projects/${project.id}/stage`, { assets: ids }, 'POST');
-            jobId = uuid(); const built = buildPrompt(this.defs, operation, engine, cfg, paths, jobId);
+            controls.forEach((control, i) => control.image_path = paths[references.length + i]);
+            jobId = uuid(); const built = buildPrompt(this.defs, operation, engine, cfg, paths.slice(0, references.length), jobId);
             const kind = textTask || operation === 'references' ? 'references' : 'panels';
             const job = { id: jobId, operation, engine, kind, settings: cfg, prompt: built.graph, output_node: built.outputNode, parent: null, sources: ids,
                 ...(textTask ? { space, target_engine: state.engine, section } : {}),
@@ -860,9 +923,9 @@ export class Studio {
                 { 'data-cancel-job': j.id, title: j.state === 'running' ? 'Cancel running generation' : 'Cancel queued generation', disabled: !!j.cancel_requested || this.busy.has(`cancel:${this.project.id}:${j.id}`) }) : null,
                 j.state === 'running' ? el('progress', { max: this.progress.get(j.id)?.max || 1, ...(this.progress.has(j.id) ? { value: this.progress.get(j.id).value } : {}) }) : null)));
         for (const b of this.dialog.querySelectorAll('[data-run]')) {
-            const run = b.dataset.run, references = ['references', 'panels'].includes(run) && this.state(run).engine === 'anima_ref' ? this.config(run).references.length : null;
+            const run = b.dataset.run, limit = ['references', 'panels'].includes(run) && referenceLimits[this.state(run).engine], references = limit ? this.config(run).references.length : null;
             const reason = this.busy.has(`${this.project.id}:${run}`) ? 'Submitting…'
-                : references !== null && (references < 1 || references > 4) ? 'Connect one to four references.'
+                : references !== null && (references < 1 || references > limit) ? `Connect one to ${limit === 4 ? 'four' : 'three'} references.`
                 : run in textTasks && !this.textGeneratorAvailable() ? 'Configure the global text generator in Settings.'
                 : run in textTasks && this.project.jobs.some(j => j.operation === run && ['registered', 'queued', 'running'].includes(j.state)) ? 'A text generation is already running.'
                 : run === 'describe' && !this.project.assets.some(a => a.id === b.dataset.textSource && !a.deleted && !a.missing) ? 'The source image is unavailable.' : '';

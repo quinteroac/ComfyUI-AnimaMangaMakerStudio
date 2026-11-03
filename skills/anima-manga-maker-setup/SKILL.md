@@ -30,6 +30,9 @@ Distinguish missing packages, packages installed but not yet loaded, missing nod
 | Projects, importing, Klecks drawing, page layout/export | Studio plus ComfyUI's existing aiohttp/Pillow; Klecks is bundled. No diffusion weights or npm build. |
 | Anima text to image, BBox to Image | An Anima checkpoint, `qwen_3_06b_base` loaded as `stable_diffusion`, and `qwen_image_vae`. Native nodes only. |
 | Anima Ref, Sketch to Art | `ComfyUI-Anima-Ref-Adapter`, `comfyui-anima-safe-pag` and a Ref Adapter LoRA in `loras`. |
+| Anima SnapRef | The SnapRef custom node and a SnapRef adapter in `loras`. |
+| LLLite controls | Native `ModelPatchLoader`/`AnimaLLLiteApply` and LLLite v2 files in `model_patches`; with Anima Ref also `ComfyUI-Anima-CharRef-LLLite`. |
+| Artist Mixer | `Anima-Artist-Mixer`. |
 | Transparency | `ComfyUI_VNCCS` for `VNCCSChromaKey`. |
 | Manga-Lite | MangaScreen and its requirements. No diffusion model. Pen extraction stays off unless requested. |
 | Pen extraction | `comfyui_controlnet_aux`, `Manga2Anime_LineArt_Preprocessor` and annotator weights. First use may download missing weights; keep it off for offline/no-download setup unless weights exist. |
@@ -41,7 +44,7 @@ Separate node installation from weight acquisition. The plugin has no download c
 
 ## Apply configuration without losing user data
 
-Prefer the live Studio settings UI or its API. Back up existing settings before writing. Global `models` keys are `anima` and `anima_ref`; text/vision helpers use `text_generator`. Preserve project root, presets, other engines and existing operation overrides. Read current settings immediately before applying a narrowly merged change; the settings API replaces submitted nested maps rather than patching their individual entries.
+Prefer the live Studio settings UI or its API. Back up existing settings before writing. Global `models` keys are `anima`, `anima_ref` and `anima_snapref`; text/vision helpers use `text_generator`. Preserve project root, presets, other engines and existing operation overrides. Read current settings immediately before applying a narrowly merged change; the settings API replaces submitted nested maps rather than patching their individual entries.
 
 Global values are inherited unless an operation or preset has explicit `model_overrides`. If an old selection persists, inspect that operation instead of repeatedly rewriting globals. Clear only the overrides the user asked to reset. Do not replace project configuration, layouts, sources or asset metadata to change an engine default.
 

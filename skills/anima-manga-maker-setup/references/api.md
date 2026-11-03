@@ -30,7 +30,7 @@ Global configuration is stored in the active ComfyUI user directory as `anima-ma
 }
 ```
 
-`models` contains engine profiles keyed by `anima` and `anima_ref`. Relevant fields include `model`, `encoder`, `encoder_type`, `vae`, `weight_dtype`, `encoder_device`, sampling values and, for `anima_ref`, `ref_adapter_lora`, `ref_guidance` and `pag_scale`. Defaults come from `profiles` in the checkout's `web/models.js`; use it, `web/prompts.js` (`initialSettings`) and installed schemas rather than creating a new configuration format. Anima uses encoder type `stable_diffusion`.
+`models` contains engine profiles keyed by `anima`, `anima_ref` and `anima_snapref`. Relevant fields include `model`, `encoder`, `encoder_type`, `vae`, `weight_dtype`, `encoder_device`, sampling values, for `anima_ref` `ref_adapter_lora`, `ref_guidance` and `pag_scale`, and for `anima_snapref` `snapref_adapter`, `snapref_mode`, `snapref_strength` and `snapref_fidelity`. Operation `controls` (LLLite) and `artist_chain` live in project configuration, not in global models. Defaults come from `profiles` in the checkout's `web/models.js`; use it, `web/prompts.js` (`initialSettings`) and installed schemas rather than creating a new configuration format. Anima uses encoder type `stable_diffusion`.
 
 The backend preserves omitted top-level fields, but submitted `models`, `defaults`, `presets` or `text_generator` maps replace the corresponding stored maps. For example, `{"models":{"anima":{"model":"new.safetensors"}}}` would discard Anima Ref and other stored Anima fields. Read, deep-copy and merge the requested fields first. Preserve unspecified fields, including numeric zeros and user-selected device/precision settings.
 

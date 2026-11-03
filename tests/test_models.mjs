@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { globalModels, inheritModels, applyPreset, savedPreset, profiles } from '../web/models.js';
 const settings = { defaults: {}, models: {} }; globalModels(settings);
-for (const engine of ['anima', 'anima_ref']) {
+for (const engine of ['anima', 'anima_ref', 'anima_snapref']) {
     assert.equal(settings.models[engine].model, 'anima/anima-turbo-v1.0-int8-convrot.safetensors');
     assert.equal(settings.models[engine].steps, 8); assert.equal(settings.models[engine].cfg, 1); assert.equal(settings.models[engine].encoder_type, 'stable_diffusion');
 }
 assert.equal(settings.models.anima_ref.ref_adapter_lora, profiles.anima_ref.settings.ref_adapter_lora);
+assert.equal(settings.models.anima_ref.ref_adapter_lora, 'anima_ref_adapter_v2_r64.safetensors'); assert.equal(settings.models.anima_snapref.snapref_mode, 'char');
 const stored = { models: { anima: { model: 'anima/mangaVisionANIIL_animaV1.safetensors', steps: 30 } } }; globalModels(stored);
 assert.equal(stored.models.anima.model, 'anima/mangaVisionANIIL_animaV1.safetensors'); assert.equal(stored.models.anima.steps, 30); assert.equal(stored.models.anima.vae, 'qwen_image_vae.safetensors');
 const config = { prompt: 'Keep this prompt.', references: ['one'], loras: [{ name: 'manual', enabled: true }] };
