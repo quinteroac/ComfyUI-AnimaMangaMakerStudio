@@ -122,6 +122,11 @@ window.addEventListener('message', async event => {
             if (![r.x, r.y, r.width, r.height].every(Number.isInteger) || r.x < 0 || r.y < 0 || r.width < 1 || r.height < 1) throw new Error('The selected region no longer fits the canvas.');
             const crop = await fitted(data.imageUrl, r, data.fit), ctx = crop.getContext('2d');
             const pixels = ctx.getImageData(0, 0, r.width, r.height), feather = Math.max(0, Number(data.feather) || 0);
+            // Ink: white lines on black become black lines whose opacity follows the line brightness.
+            if (data.ink) for (let i = 0; i < pixels.data.length; i += 4) {
+                const line = (pixels.data[i] + pixels.data[i + 1] + pixels.data[i + 2]) / 3;
+                pixels.data[i] = pixels.data[i + 1] = pixels.data[i + 2] = 0; pixels.data[i + 3] = line;
+            }
             let maskPixels, clearMask;
             if (data.mask instanceof Blob) {
                 const bitmap = await createImageBitmap(data.mask);

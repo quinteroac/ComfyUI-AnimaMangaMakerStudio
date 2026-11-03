@@ -31,6 +31,7 @@ CHROMIUM_PATH=/path/chromium node --experimental-default-type=module custom_node
 CHROMIUM_PATH=/path/chromium node --experimental-default-type=module custom_nodes/ComfyUI-AnimaMangaMakerStudio/tests/browser_sketch.mjs /path/playwright /path/python
 CHROMIUM_PATH=/path/chromium node --experimental-default-type=module custom_nodes/ComfyUI-AnimaMangaMakerStudio/tests/browser_story.mjs /path/playwright /path/python
 CHROMIUM_PATH=/path/chromium node --experimental-default-type=module custom_nodes/ComfyUI-AnimaMangaMakerStudio/tests/browser_inpaint.mjs /path/playwright /path/python
+CHROMIUM_PATH=/path/chromium node --experimental-default-type=module custom_nodes/ComfyUI-AnimaMangaMakerStudio/tests/browser_redraw.mjs /path/playwright /path/python
 # Needs vnccs-utils in the running ComfyUI; the test page drops COEP because headless Chromium cannot start Pose Studio's module worker in an isolated page:
 CHROMIUM_PATH=/path/chromium node --experimental-default-type=module custom_nodes/ComfyUI-AnimaMangaMakerStudio/tests/browser_pose.mjs /path/playwright /path/python
 ```

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { buildPrompt, initialSettings, options, controlTypes, composePrompt, referencePrompt, parsePrompt, referencePresets, promptSections, textInstruction, textGeneratorDefaults } from '../web/prompts.js';
+import { buildPrompt, buildLineartPrompt, redrawModes, initialSettings, options, controlTypes, composePrompt, referencePrompt, parsePrompt, referencePresets, promptSections, textInstruction, textGeneratorDefaults } from '../web/prompts.js';
 import { boxGroups, rectMatrix, transformRect } from '../web/size.js';
 import { globalModels, inheritModels } from '../web/models.js';
 
@@ -136,6 +136,24 @@ for (const [type, { patch, strength, start, end }] of Object.entries(controlType
     }
     assert.throws(() => buildPrompt(defs, 'inpaint', 'anima_ref', { ...configFor('anima_ref', { prompt: 'x' }), inpaint: { image_path: 'a', mask_path: 'b' } }, ['a.png'], 'x'), /Anima engine/);
 }
+
+// Redraw and upscale extract the structure from the source inside the graph and feed it to the mode's LLLite.
+for (const [mode, extracted] of [['lineart', 'ImageInvert'], ['any', 'ImageInvert'], ['gray', 'MaskToImage'], ['depth', 'DepthAnythingV2Preprocessor'], ['tile', 'ImageScale']]) for (const [operation, denoise] of [['redraw', 1], ['upscale', 0.3]]) {
+    const patch = options(defs, 'ModelPatchLoader', 'name').find(name => name.split('/').at(-1) === controlTypes[redrawModes[mode].type]?.patch) || patches[0];
+    const built = buildPrompt(defs, operation, 'anima', { ...configFor('anima', { prompt: 'manga' }), aspect_ratio: '832:1216', megapixels: operation === 'upscale' ? 2 : 1, denoise,
+        redraw: { source_path: 'source.png', mode, patch, strength: 0.9, end: 0.8 } }, [], operation), graph = built.graph;
+    const [, lllite] = Object.entries(graph).find(([, n]) => n.class_type === 'AnimaLLLiteApply'), scale = Object.values(graph).find(n => n.class_type === 'ImageScale');
+    assert.equal(graph[lllite.inputs.image[0]].class_type, extracted, `${mode} feeds its extraction`); assert.equal(lllite.inputs.strength, 0.9); assert.equal(lllite.inputs.end_percent, 0.8);
+    assert.equal(graph[scale.inputs.image[0]].inputs.image, 'source.png'); assert(scale.inputs.width * scale.inputs.height > (operation === 'upscale' ? 1.8e6 : 0.9e6));
+    const sampler = Object.values(graph).find(n => n.class_type === 'KSampler');
+    assert.equal(graph[sampler.inputs.latent_image[0]].class_type, denoise < 1 ? 'VAEEncode' : 'EmptyLatentImage'); assert.equal(sampler.inputs.denoise, denoise);
+    assert.equal(graph[built.outputNode].class_type, operation === 'upscale' ? 'SaveImage' : 'PreviewImage', 'Upscale is saved as a project version');
+    jobs.push({ engine: 'anima', op: operation, count: 0, ...built });
+}
+assert.throws(() => buildPrompt(defs, 'redraw', 'anima_ref', { ...configFor('anima_ref', { prompt: 'x' }), redraw: { source_path: 'a', mode: 'gray', patch: patches[0], strength: 1 } }, ['a.png'], 'x'), /Anima engine/);
+const lineart = buildLineartPrompt(defs, 'drawing.png', 768);
+assert.deepEqual(Object.values(lineart.graph).map(n => n.class_type), ['LoadImage', 'AnimeLineArtPreprocessor', 'PreviewImage']);
+jobs.push({ engine: 'none', op: 'lineart', count: 0, ...lineart });
 
 // Anima Artist Mixer replaces the positive text encoding and wraps the model.
 for (const [engine, images, op] of [['anima', [], 'panels'], ['anima_ref', ['a.png'], 'panels'], ['anima', [], 'bbox']]) {

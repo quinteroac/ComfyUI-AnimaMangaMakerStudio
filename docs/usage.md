@@ -40,6 +40,10 @@ The generate button, seed and **Random seed for each generation** stay pinned at
 
 Hover an image to show its checkbox; selecting images shows a bar with **Clear selection**, remove, restore, ordering and tag actions. Queued and running generations appear as placeholders with progress in their gallery and in the status bar.
 
+## Upscale
+
+**Upscale**, in an image's menu, saves a larger version of a reference, panel or page. Anima redraws the image at **Target resolution · MP** (2 by default) from the image itself, held by the any-test LLLite on its grayscale, starting at **Denoise** 0.3; a Tile & Repair LLLite can be selected instead. The image's own prompt is filled in when it has one: colors the prompt does not name can drift, so name them (eyes, hair, clothes) or use **Create prompt from image** first.
+
 ## Connected references
 
 **Choose references** and **Choose control image** open one picker for project images, ComfyUI's input folder and **Upload from computer**. An image from outside the project is imported into References and connected in the same step, so it keeps an id, versions and Trash like any other asset.

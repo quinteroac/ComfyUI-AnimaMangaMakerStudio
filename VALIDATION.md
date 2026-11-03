@@ -1,3 +1,9 @@
+# Redraw, lineart and upscale — November 2, 2026
+
+- **Real inference** with the Studio's graphs on the benchmark source. mangaVision with Lineart 1.0 and a manga style inked it as clean manga close to the source; Any 0.7 and Grayscale 1.0 kept it too, Grayscale with screentone in the shading; Depth changed the framing. Turbo kept the composition in Lineart, Any and Grayscale but applied a watercolor style only lightly. Lineart extraction as ink gave clean but light grey lines. Upscale to 2.5 MP under the grayscale LLLite sharpened lines but drifted unnamed colors (amber eyes became blue; the bow turned navy at denoise 0.55); at the default 2 MP and 0.3 with the colors named in the prompt, eyes and bow kept their colors and the lines were sharper than lanczos, with small changes in fine detail.
+- **44 graphs** match the installed schemas, adding every redraw mode for redraw and upscale and the lineart extraction graph.
+- **Chromium `browser_redraw.mjs`:** Lineart redraw with the Color → Manga preset queues the inverted lineart into `anima-lllite-lineart-1`; Extract lineart adds an ink layer (black, opacity from the line brightness); gallery Upscale queues the grayscale LLLite at about 2 MP and denoise 0.3 and saves a new panel version. `browser_inpaint.mjs`, `browser_sketch.mjs` and `browser.mjs` still pass.
+
 # Pose mannequin and regions — November 2, 2026
 
 - **Chromium `browser_pose.mjs`** with the installed vnccs-utils: VNCCS Pose Studio loads inside the Studio dialog, **Apply to layer** fills the 3D pose layer with an 816×1224 render on black (83,512 lit pixels), the Pose Studio state is stored with the layer entry, and **From 3D pose** turns the mannequin into a flat red region. Headless Chromium cannot start Pose Studio's module worker in a cross-origin-isolated page, also outside the Studio, so the test page drops COEP/COOP; the user's ComfyUI serves COEP credentialless.

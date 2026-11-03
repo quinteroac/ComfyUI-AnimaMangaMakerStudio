@@ -1,7 +1,7 @@
 import { api } from '../../scripts/api.js';
 import { uuid, el, button, iconButton, field, request, assetUrl, inputUrl, download, chooseFile, sizeControls } from './client.js';
 import { sizeSettings, sizeLabel } from './size.js';
-import { options, defaultAttention, alphaMethods, referenceLimits, controlTypes, initialSettings, buildPrompt, composePrompt, promptSections, referencePrompt, parsePrompt, referencePresets, textGeneratorDefaults, textInstruction } from './prompts.js';
+import { options, defaultAttention, alphaMethods, referenceLimits, controlTypes, redrawModes, initialSettings, buildPrompt, composePrompt, promptSections, referencePrompt, parsePrompt, referencePresets, textGeneratorDefaults, textInstruction } from './prompts.js';
 import { newPage, normalizePage, PageEditor } from './editor.js';
 import { modelFields, profiles, globalModels, inheritModels, applyPreset, savedPreset } from './models.js';
 import { openDrawing } from './drawing.js';
@@ -670,6 +670,7 @@ export class Studio {
                 if (a.kind === 'references') actions.append(this.describeReferenceAction(a, space));
                 if (!a.deleted) {
                     if (['references', 'panels'].includes(a.kind)) addAction('Draw with Klecks', 'pencil', () => openDrawing(this, a.kind, a));
+                    addAction('Upscale', 'wand', () => this.upscaleDialog(a));
                     if (['references', 'panels'].includes(a.kind)) addAction('Use with Anima Ref', 'link', () => {
                         this.state(a.kind).engine = 'anima_ref'; this.config(a.kind, 'anima_ref').references = [a.id];
                         this.rebuild(a.kind); this.switch(a.kind); this.saveSoon();
@@ -848,20 +849,53 @@ export class Studio {
                 ...(textTask ? { space, target_engine: state.engine, section } : {}),
                 ...(dialogue ? { dialogue_target: { page: dialogue.page, bubble: dialogue.bubble } } : {}),
                 name: `${spaces[space]} · ${new Date().toLocaleString('en-US')}` };
-            await this.flush();
-            const registered = await request(`/projects/${project.id}/jobs`, job, 'POST'); project.jobs.push(registered);
-            const response = await api.fetchApi('/prompt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-                prompt_id: jobId, client_id: api.clientId, prompt: built.graph,
-                extra_data: { anima_manga_maker: { project: project.id, operation, job: jobId } },
-            }) });
-            const result = await response.json();
-            if (!response.ok) throw new Error(JSON.stringify(result.node_errors || result.error || result));
-            if (result.prompt_id !== jobId) throw new Error('The server did not preserve the execution identifier.');
-            registered.state = 'queued'; this.jobs();
+            await this.queue(project, job, built);
         } catch (error) {
             if (jobId && project.jobs.some(j => j.id === jobId)) { await request(`/projects/${project.id}/jobs/${jobId}`, { error: error.message }, 'PATCH'); const job = project.jobs.find(j => j.id === jobId); job.state = 'error'; job.error = error.message; }
             throw new Error(`${textTasks[operation] || spaces[space]} · ${engine}: ${error.message}`);
         } finally { this.busy.delete(key); this.jobs(); }
+    }
+    // Registers a job with the project and queues its graph; the poll imports its results.
+    async queue(project, job, built) {
+        await this.flush();
+        const registered = await request(`/projects/${project.id}/jobs`, job, 'POST'); project.jobs.push(registered);
+        const response = await api.fetchApi('/prompt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+            prompt_id: job.id, client_id: api.clientId, prompt: built.graph,
+            extra_data: { anima_manga_maker: { project: project.id, operation: job.operation, job: job.id } },
+        }) });
+        const result = await response.json();
+        if (!response.ok) throw new Error(JSON.stringify(result.node_errors || result.error || result));
+        if (result.prompt_id !== job.id) throw new Error('The server did not preserve the execution identifier.');
+        registered.state = 'queued'; this.jobs();
+    }
+    // A larger version of an image: Anima redraws it at the target resolution from the image itself, held by the grayscale (or a tile) LLLite.
+    // The image's own prompt is used when it has one, since colors the prompt does not name can drift.
+    upscaleDialog(asset) {
+        const existing = this.project.config['upscale:anima'], cfg = this.config('upscale', 'anima');
+        if (!existing) Object.assign(cfg, { megapixels: 2, denoise: 0.3, redraw_mode: 'gray', redraw_strength: 1, redraw_end: 1, random_seed: true,
+            redraw_patch: options(this.defs, 'ModelPatchLoader', 'name').find(name => name.split('/').at(-1) === controlTypes.anytest.patch) || controlTypes.anytest.patch });
+        Object.assign(cfg, referencePrompt(asset) || { prompt_sections: {}, prompt: '' });
+        const changed = () => this.saveSoon();
+        const number = (label, key, range, step) => slider(label, el('input', { type: 'number', 'aria-label': label, value: cfg[key], step, onchange: e => { cfg[key] = Number(e.target.value); changed(); } }), range);
+        const mode = el('select', { 'aria-label': 'Hold the image with', onchange: e => { cfg.redraw_mode = e.target.value; changed(); } },
+            ...['gray', 'tile'].map(value => el('option', { value, text: redrawModes[value].label }))); mode.value = cfg.redraw_mode;
+        const content = el('div', { class: 'amm-upscale' }, el('small', { text: `${asset.name} · ${sizeLabel(asset)}. The result is saved as a new version.` }),
+            number('Target resolution · MP', 'megapixels', [1, 6], 0.25), number('Denoise · higher adds detail and drifts more', 'denoise', [0, 1], 0.05),
+            field('Hold the image with', mode), combo('LLLite', options(this.defs, 'ModelPatchLoader', 'name'), cfg.redraw_patch, value => { cfg.redraw_patch = value; changed(); }),
+            number('LLLite strength', 'redraw_strength', [0, 2], 0.05));
+        this.promptControls(content, cfg, changed); this.samplingControls(content, cfg, 'anima', changed, 'upscale'); this.modelControls(content, cfg, 'anima', changed, false, 'upscale', () => {});
+        const dialog = this.modal(`Upscale · ${asset.name}`, content, button('Upscale', () => this.action(async () => { await this.upscale(asset, cfg); dialog.close(); }), { class: 'amm-primary' }));
+    }
+    async upscale(asset, cfg) {
+        const project = this.project, jobId = uuid(), settings = clone(cfg);
+        if (settings.random_seed) settings.seed = Math.floor(Math.random() * 2 ** 48);
+        Object.assign(settings, { aspect_ratio: sizeSettings(asset).aspect_ratio, megapixels: cfg.megapixels });
+        const [path] = await request(`/projects/${project.id}/stage`, { assets: [asset.id] }, 'POST');
+        settings.redraw = { source_path: path, mode: settings.redraw_mode, patch: settings.redraw_patch, strength: settings.redraw_strength, end: settings.redraw_end };
+        const built = buildPrompt(this.defs, 'upscale', 'anima', settings, [], jobId);
+        await this.queue(project, { id: jobId, operation: 'upscale', engine: 'anima', kind: asset.kind, space: asset.kind, settings, prompt: built.graph, output_node: built.outputNode,
+            parent: asset.id, sources: [asset.id], name: `Upscale · ${asset.name}` }, built);
+        this.notify(`Upscale queued · ${asset.name}`);
     }
     textResult(job) {
         const result = el('textarea', { value: job.text || '', 'aria-label': 'Generator proposal', class: 'amm-prompt-preview' });
@@ -910,7 +944,7 @@ export class Studio {
             const added = JSON.stringify(data.assets.map(a => [a.id,a.missing,a.deleted,a.name,a.metadata?.description_prompt])) !== JSON.stringify(project.assets.map(a => [a.id,a.missing,a.deleted,a.name,a.metadata?.description_prompt]));
             for (const job of data.jobs) {
                 const prior = project.jobs.find(j => j.id === job.id);
-                if (job.state === 'error' && prior?.state !== 'error') this.fail(new Error(`${textTasks[job.operation] || (job.operation === 'sketch' ? 'Sketch to Art' : job.operation === 'manga' ? 'Art to Manga Panel' : spaces[job.operation])} · ${job.engine}: ${typeof job.error === 'string' ? job.error : JSON.stringify(job.error)}`));
+                if (job.state === 'error' && prior?.state !== 'error') this.fail(new Error(`${textTasks[job.operation] || (job.operation === 'sketch' ? 'Sketch to Art' : job.operation === 'manga' ? 'Art to Manga Panel' : spaces[job.operation] || job.name)} · ${job.engine}: ${typeof job.error === 'string' ? job.error : JSON.stringify(job.error)}`));
                 if (job.state === 'complete' && prior?.state !== 'complete') {
                     if (job.operation in textTasks) this.textResult(job);
                     else if (job.operation === 'style' && job.drawing_output) { this.stylePreviews.unshift({ project: project.id, engine: job.engine, url: api.apiURL('/view?' + new URLSearchParams(job.drawing_output)) }); this.renderStylePreviews?.(); }

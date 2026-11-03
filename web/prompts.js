@@ -119,6 +119,23 @@ export const controlTypes = {
         hint: 'DWPose skeleton. Weak below 1.3; prefer 3D pose.' },
 };
 
+// Redraw keeps a structure taken from the source image itself, extracted in the graph and fed to an LLLite from `controlTypes`.
+// Upscale is the grayscale mode on a larger canvas with an image-to-image start.
+export const redrawModes = {
+    lineart: { label: 'Lineart · keep every line', type: 'lineart', extract: 'lineart' },
+    any: { label: 'Any · lineart, looser', type: 'anytest', extract: 'lineart' },
+    gray: { label: 'Grayscale · keep shapes and shading', type: 'anytest', extract: 'gray' },
+    depth: { label: 'Depth · keep the layout, change the content', type: 'depth', extract: 'depth' },
+    tile: { label: 'Tile · the image itself, for a Tile & Repair LLLite', type: null, extract: 'image' },
+};
+
+// Lineart extraction alone, for an ink layer in the drawing editor: white lines on black, as the preprocessor returns them.
+export function buildLineartPrompt(defs, imagePath, resolution) {
+    if (!defs.AnimeLineArtPreprocessor) throw new Error('Missing node AnimeLineArtPreprocessor. Install comfyui_controlnet_aux and refresh the lists.');
+    return { graph: { 1: { class_type: 'LoadImage', inputs: { image: imagePath } }, 2: { class_type: 'AnimeLineArtPreprocessor', inputs: { image: ['1', 0], resolution } },
+        3: { class_type: 'PreviewImage', inputs: { images: ['2', 0] } } }, outputNode: '3' };
+}
+
 export function defaultAttention(defs, engine) {
     if (!referenceLimits[engine]) return '';
     return options(defs, 'ModelAttentionBackend', 'attention').includes('comfy kitchen attention') ? 'comfy kitchen attention' : 'pytorch attention';
@@ -186,7 +203,7 @@ export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) 
         matte_cleanup: 0.1, foreground_recover: 0.35, edge_decontaminate: 0.75, edge_choke: 0.08, matte_method: 'guided_edge', screen_mode: 'auto', output_mode: 'straight_rgba', use_sam3_recovery_mask: false })
         : add('VAEDecode', { samples, vae });
     // Drawing editor results and project style previews stay in ComfyUI's temp folder instead of the project.
-    const save = images => ['sketch', 'bbox', 'style', 'inpaint'].includes(operation) ? add('PreviewImage', { images }) : add('SaveImage', { images, filename_prefix: `anima-manga-maker/${jobId}/result` });
+    const save = images => ['sketch', 'bbox', 'style', 'inpaint', 'redraw'].includes(operation) ? add('PreviewImage', { images }) : add('SaveImage', { images, filename_prefix: `anima-manga-maker/${jobId}/result` });
     const size = imageDimensions(config, 8);
     let model = add('UNETLoader', { unet_name: check('UNETLoader', 'unet_name', config.model, 'Model'), weight_dtype: config.weight_dtype });
     const clip = load(config.encoder, config.encoder_type);
@@ -201,7 +218,21 @@ export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) 
     }
     // Controls are staged with the job; operations that stage no control image (sketch, bbox, previews) run without them.
     const controls = (config.controls || []).filter(c => c.enabled && c.image_path);
-    let inpaint;
+    // The image-to-image start latent of inpaint, redraw and upscale.
+    let start;
+    if (operation === 'redraw' || operation === 'upscale') {
+        if (engine !== 'anima') throw new Error('Redraw uses the Anima engine.');
+        const { source_path, mode, patch, strength, end } = config.redraw;
+        const pixels = add('ImageScale', { image: add('LoadImage', { image: source_path }), upscale_method: 'lanczos', ...size, crop: 'disabled' });
+        const resolution = Math.max(512, Math.round(Math.min(size.width, size.height) / 64) * 64);
+        // Lineart extraction gives white lines on black; the LLLites read black lines on white. Grayscale takes the green channel, close to luminance.
+        const extract = { lineart: () => add('ImageInvert', { image: add('AnimeLineArtPreprocessor', { image: pixels, resolution }) }),
+            gray: () => add('MaskToImage', { mask: add('ImageToMask', { image: pixels, channel: 'green' }) }),
+            depth: () => add('DepthAnythingV2Preprocessor', { image: pixels, ckpt_name: 'depth_anything_v2_vitb.pth', resolution }), image: () => pixels }[redrawModes[mode].extract];
+        model = add('AnimaLLLiteApply', { model, model_patch: add('ModelPatchLoader', { name: check('ModelPatchLoader', 'name', patch, 'Redraw model') }),
+            image: extract(), strength: Number(strength), start_percent: 0, end_percent: Number(end ?? 1) });
+        if (Number(config.denoise) < 1) start = add('VAEEncode', { pixels, vae });
+    }
     if (operation === 'inpaint') {
         // Masked image-to-image on the staged crop: the inpainting LLLite sees the image outside the mask, and only the mask is denoised.
         if (engine !== 'anima') throw new Error('Inpainting uses the Anima engine.');
@@ -209,7 +240,7 @@ export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) 
         const mask = add('ImageToMask', { image: add('LoadImage', { image: config.inpaint.mask_path }), channel: 'red' });
         if (config.inpaint.patch) model = add('AnimaLLLiteApply', { model, model_patch: add('ModelPatchLoader', { name: check('ModelPatchLoader', 'name', config.inpaint.patch, 'Inpainting model') }),
             image: pixels, strength: Number(config.inpaint.strength ?? 1), start_percent: 0, end_percent: 1, mask });
-        inpaint = add('SetLatentNoiseMask', { samples: add('VAEEncode', { pixels, vae }), mask });
+        start = add('SetLatentNoiseMask', { samples: add('VAEEncode', { pixels, vae }), mask });
     }
     for (const control of controls) {
         // The Ref Adapter adds the reference frame to the sequence, so its LLLite must skip that frame (ComfyUI-Anima-CharRef-LLLite).
@@ -263,8 +294,8 @@ export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) 
         const sigmas = add('BasicScheduler', { model, scheduler: config.scheduler, steps: Number(config.steps), denoise: sketching ? Number(config.denoise ?? 0.6) : 1 });
         sampled = add('SamplerCustomAdvanced', { noise: add('RandomNoise', { noise_seed: Number(config.seed) }), guider, sampler: add('KSamplerSelect', { sampler_name: config.sampler }), sigmas, latent_image: latent });
     } else {
-        sampled = add('KSampler', { model, positive, negative, latent_image: inpaint || add('EmptyLatentImage', { ...size, batch_size: 1 }), seed: Number(config.seed), steps: Number(config.steps),
-            cfg: Number(config.cfg), sampler_name: config.sampler, scheduler: config.scheduler, denoise: inpaint ? Number(config.denoise) : 1 });
+        sampled = add('KSampler', { model, positive, negative, latent_image: start || add('EmptyLatentImage', { ...size, batch_size: 1 }), seed: Number(config.seed), steps: Number(config.steps),
+            cfg: Number(config.cfg), sampler_name: config.sampler, scheduler: config.scheduler, denoise: start ? Number(config.denoise) : 1 });
     }
     return { graph, outputNode: save(decode(sampled, vae))[0] };
 }

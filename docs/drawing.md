@@ -2,7 +2,7 @@
 
 [Documentation](README.md) · [Project README](../README.md)
 
-Klecks handles drawing and layered editing; the **Drawing workflow** selector adds generation, inpainting or manga conversion to that same canvas. The result remains editable before it is saved to the project.
+Klecks handles drawing and layered editing; the **Drawing workflow** selector adds generation, inpainting, redrawing or manga conversion to that same canvas. The result remains editable before it is saved to the project.
 
 **Draw reference** and **Draw panel**, in each gallery header, open a new canvas with a name, AR and MP. The **Draw with Klecks** context menu action opens an existing image to draw over it. [Klecks](https://github.com/bitbof/klecks) runs in a local iframe with brushes, a stabilizer, layers, selection, shapes, text and filters. **Save to project** or **Submit** saves a PNG usable for inference and a PSD with editable layers. Each subsequent save creates a new version; originals are preserved. Reopening a drawing loads its PSD; an imported or generated image opens as an Original layer plus a transparent Drawing layer. Closing asks for confirmation before discarding drawing changes made since the last save.
 
@@ -27,6 +27,20 @@ Sketch parameters and prompt/settings presets are stored separately for referenc
 | **Inpaint** | Mask layer | 1.0 | Replace clothes, objects or background in an area |
 | **Outpaint** | Transparent canvas area, grown into the image by **Outpaint overlap**, plus the mask layer | 1.0 | Extend a panel. Set **Extend left/top/right/bottom · px** and **Extend canvas**: the drawing reopens on a larger canvas with every layer moved and the new area transparent. Klecks' undo history starts again after extending. Describe what the new area should show in the prompt. |
 | **Fix details** | Mask layer | 0.5 | Redraw a face, hands or another detail at the working resolution, so small areas gain detail, and keep the original's structure |
+
+## Redraw and lineart
+
+**Redraw** redraws the canvas or selected region with Anima while an LLLite holds a structure extracted from the drawing in the graph (comfyui_controlnet_aux for lineart and depth):
+
+| Keep from the drawing | LLLite | What it does |
+| --- | --- | --- |
+| **Lineart** (default, fidelity 1.0) | lineart | Keeps every line. With mangaVision and the **Color → Manga** preset it inks a color illustration as clean manga, faithful to the source. |
+| **Any** (0.7) | any-test | A looser lineart hold. |
+| **Grayscale** (1.0) | any-test | Keeps shapes and shading; manga models turn the shading into screentone. |
+| **Depth** (1.0) | depth | Keeps only the layout; clothes and framing can change. |
+| **Tile** | your Tile & Repair LLLite | The image itself as the control, for a tile model if installed. |
+
+**Denoise** below 1 starts from the drawing and keeps more of its colors; at 1 the colors come from the prompt. The **Watercolor** preset only fills the Style section, and Turbo applies such styles lightly. **Extract lineart** puts the drawing's lines on an editable ink layer: black, with each line's opacity following its strength.
 
 ## Transparency
 
