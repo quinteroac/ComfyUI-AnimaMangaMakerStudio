@@ -22,7 +22,7 @@ function drawingEditor(studio, kind, source, drawingName, size) {
     const dialog = studio.modal(kind === 'references' ? 'Draw reference · Klecks' : 'Draw panel · Klecks', el('div', { class: 'amm-drawing-body' },
         el('div', { class: 'amm-toolbar' }, field('Drawing name', name), save, status), iframe));
     dialog.classList.add('amm-drawing-dialog');
-    let parent = source?.id || null, saving = false, exporting = false, opened = false, dirty = false;
+    let parent = source?.id || null, saving = false, exporting = false, opened = false, dirty = false, reopen = null;
     const art = sketchControls(studio, kind, project, send, () => { save.disabled = saving || exporting || !opened || art.busy; send('manga-drawing-ai-busy', { busy: art.busy }); });
     const workspace = el('div', { class: 'amm-drawing-workspace' }); iframe.replaceWith(workspace); workspace.append(iframe, art.element);
     const close = () => {
@@ -37,8 +37,14 @@ function drawingEditor(studio, kind, source, drawingName, size) {
     window.addEventListener('message', async event => {
         if (event.source !== iframe.contentWindow || event.origin !== location.origin || !event.data?.type?.startsWith('manga-drawing-')) return;
         const data = event.data; art.handle(data).catch(error => { status.textContent = error.message; });
-        if (data.type === 'manga-drawing-ready') send('manga-drawing-init', { ...size,
+        if (data.type === 'manga-drawing-ready' && reopen) { send('manga-drawing-init', { ...size, psdBlob: reopen.psd, margins: reopen.margins }); reopen = null; }
+        else if (data.type === 'manga-drawing-ready') send('manga-drawing-init', { ...size,
             ...(source?.metadata?.drawing_document ? { psdUrl: api.apiURL(`/anima-manga-maker/projects/${project}/assets/${source.id}/drawing`) } : source ? { imageUrl: assetUrl(project, source.id) } : {}) });
+        else if (data.type === 'manga-drawing-extended-psd') {
+            // Reloads the editor with the current layers on a larger canvas; Klecks' undo history starts again.
+            reopen = { psd: data.psd, margins: data.margins }; opened = false; dirty = true; save.disabled = true; status.textContent = 'Extending the canvas…';
+            iframe.contentWindow.location.reload();
+        }
         else if (data.type === 'manga-drawing-opened') { opened = true; status.textContent = 'Draw with Klecks, then save to your project.'; save.disabled = art.busy; }
         else if (data.type === 'manga-drawing-changed' || data.type === 'manga-drawing-dirty') dirty = true;
         else if (data.type === 'manga-drawing-saving') { exporting = true; save.disabled = true; status.textContent = 'Saving drawing…'; }

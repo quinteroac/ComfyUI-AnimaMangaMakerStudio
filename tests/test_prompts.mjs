@@ -115,6 +115,28 @@ for (const [type, { patch, strength, start, end }] of Object.entries(controlType
     jobs.push({ engine: 'anima', op: 'panels', count: 0, ...built });
 }
 
+// Inpainting: the staged crop is scaled to the working size, encoded under its mask and denoised there; the inpainting LLLite sees the same image and mask.
+{
+    const inpaintPatch = options(defs, 'ModelPatchLoader', 'name').find(name => name.includes('inpainting')) || patches[0];
+    const cfg = { ...configFor('anima', { prompt: 'red sweater' }), aspect_ratio: '300:420', megapixels: 1, denoise: 0.5,
+        controls: [{ enabled: true, patch: patches[0], image_path: 'pose.png', strength: 1, start: 0, end: 1 }] };
+    for (const patch of [inpaintPatch, '']) {
+        const built = buildPrompt(defs, 'inpaint', 'anima', { ...cfg, inpaint: { image_path: 'crop.png', mask_path: 'mask.png', patch, strength: 1.1 } }, [], 'inpaint'), graph = built.graph;
+        const node = type => Object.entries(graph).find(([, n]) => n.class_type === type);
+        const [scaleId, scale] = node('ImageScale'), [maskId] = node('ImageToMask'), sampler = node('KSampler')[1];
+        assert.equal(graph[scale.inputs.image[0]].inputs.image, 'crop.png'); assert.equal(scale.inputs.width % 8, 0); assert(scale.inputs.width < scale.inputs.height);
+        const noise = graph[sampler.inputs.latent_image[0]];
+        assert.equal(noise.class_type, 'SetLatentNoiseMask'); assert.deepEqual(noise.inputs.mask, [maskId, 0]); assert.deepEqual(graph[noise.inputs.samples[0]].inputs.pixels, [scaleId, 0]);
+        assert.equal(sampler.inputs.denoise, 0.5);
+        const lllite = Object.values(graph).filter(n => n.class_type === 'AnimaLLLiteApply');
+        assert.equal(lllite.length, patch ? 2 : 1, 'Inpainting LLLite plus the control layer');
+        if (patch) { assert.deepEqual(lllite[0].inputs.mask, [maskId, 0]); assert.deepEqual(lllite[0].inputs.image, [scaleId, 0]); assert.equal(lllite[0].inputs.strength, 1.1); }
+        assert.equal(graph[built.outputNode].class_type, 'PreviewImage');
+        jobs.push({ engine: 'anima', op: 'inpaint', count: 0, ...built });
+    }
+    assert.throws(() => buildPrompt(defs, 'inpaint', 'anima_ref', { ...configFor('anima_ref', { prompt: 'x' }), inpaint: { image_path: 'a', mask_path: 'b' } }, ['a.png'], 'x'), /Anima engine/);
+}
+
 // Anima Artist Mixer replaces the positive text encoding and wraps the model.
 for (const [engine, images, op] of [['anima', [], 'panels'], ['anima_ref', ['a.png'], 'panels'], ['anima', [], 'bbox']]) {
     const built = buildPrompt(defs, op, engine, { ...configFor(engine, { prompt: '1girl, rain' }), artist_chain: ' @kubo tite, @mineru::0.6 ', artist_strength: 1.5, boxes: [] }, images, 'artists'), graph = built.graph;

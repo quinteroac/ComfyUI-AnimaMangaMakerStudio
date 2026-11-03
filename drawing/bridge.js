@@ -2,6 +2,35 @@ localStorage.setItem('klecks-language', 'en');
 const send = (type, data = {}) => parent.postMessage({ type, ...data }, location.origin);
 let editor, saving = false, aiBusy = false, submitSuccess, submitError, canvasRevision = 0, strokeActive = false, boxTool = false;
 const partLayers = new Set();
+// Layers named `Control · …` hold control images and masks: they stay in the PSD but are left out of the drawing sent to generation and of the saved PNG.
+const isControl = name => name.startsWith('Control · ');
+let hasControls = false;
+const toBlob = canvas => new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+
+// The embedded Klecks cannot resize the canvas, so extending reopens the drawing with every layer moved by the margins and the new area transparent.
+function extend(project, { left = 0, top = 0, right = 0, bottom = 0 }) {
+    const width = project.width + left + right, height = project.height + top + bottom;
+    return { ...project, width, height, layers: project.layers.map(layer => {
+        const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(layer.image, left, top);
+        return { ...layer, image: canvas };
+    }) };
+}
+
+// Without control layers Klecks' own PNG is used; otherwise the layers are composed from the PSD and each control layer is returned separately.
+async function capture() {
+    if (!hasControls) return { png: await editor.getPNG(), controls: [] };
+    const project = await editor.readPSD(await (await editor.getPSD()).arrayBuffer());
+    hasControls = project.layers.some(layer => isControl(layer.name));
+    const canvas = document.createElement('canvas'); canvas.width = project.width; canvas.height = project.height;
+    const ctx = canvas.getContext('2d'), controls = [];
+    for (const layer of project.layers) {
+        if (isControl(layer.name)) { controls.push({ name: layer.name, png: await toBlob(layer.image) }); continue; }
+        if (!layer.isVisible) continue;
+        ctx.globalAlpha = layer.opacity; ctx.globalCompositeOperation = layer.mixModeStr || 'source-over'; ctx.drawImage(layer.image, 0, 0);
+    }
+    return { png: await toBlob(canvas), controls };
+}
 
 async function save() {
     if (!editor || saving) return;
@@ -9,7 +38,7 @@ async function save() {
     saving = true; document.documentElement.inert = true;
     send('manga-drawing-saving');
     try {
-        const png = await editor.getPNG(), psd = await editor.getPSD();
+        const { png } = await capture(), psd = await editor.getPSD();
         send('manga-drawing-save', { png, psd });
     } catch (error) {
         saving = false; document.documentElement.inert = false; submitError?.(); submitSuccess = submitError = null;
@@ -45,7 +74,8 @@ window.addEventListener('message', async event => {
         } });
         try {
             let project;
-            if (data.psdUrl) {
+            if (data.psdBlob) project = extend(await editor.readPSD(await data.psdBlob.arrayBuffer()), data.margins);
+            else if (data.psdUrl) {
                 const response = await fetch(data.psdUrl); if (!response.ok) throw new Error('Could not load the layered drawing.');
                 project = await editor.readPSD(await response.arrayBuffer());
             } else if (data.imageUrl) {
@@ -56,6 +86,7 @@ window.addEventListener('message', async event => {
             } else {
                 project = { width: data.width, height: data.height, layers: [{ name: 'Background', opacity: 1, image: { fill: '#ffffff' } }, { name: 'Drawing', opacity: 1, image: { fill: 'transparent' } }] };
             }
+            hasControls = project.layers.some(layer => isControl(layer.name));
             editor.openProject(project);
         } catch (error) {
             editor.initError(error.message || 'Could not open the drawing.');
@@ -80,7 +111,7 @@ window.addEventListener('message', async event => {
         try {
             if (!editor || saving) throw new Error('The editor is busy saving.');
             if (strokeActive) throw new Error('Finish the stroke before generating.');
-            const revision = `${canvasRevision}:${editor.getRevision()}`; const png = await editor.getPNG(); send('manga-drawing-snapshot-result', { token: data.token, revision, png });
+            const revision = `${canvasRevision}:${editor.getRevision()}`; const { png, controls } = await capture(); send('manga-drawing-snapshot-result', { token: data.token, revision, png, controls });
         } catch (error) { send('manga-drawing-ai-error', { token: data.token, error: error.message || String(error) }); }
     } else if (data?.type === 'manga-drawing-apply-art') {
         try {
@@ -132,6 +163,24 @@ window.addEventListener('message', async event => {
             send('manga-drawing-changed', { source: 'ai' }); send('manga-drawing-art-applied', { token: data.token });
         } catch (error) { send('manga-drawing-ai-error', { token: data.token, error: error.message || String(error) }); }
         finally { saving = false; document.documentElement.inert = false; }
+    } else if (data?.type === 'manga-drawing-control-layer') {
+        // Creates or replaces a control layer, empty or with an image fitted inside the canvas.
+        try {
+            if (!editor || saving) throw new Error('The editor is busy saving.');
+            const layer = document.createElement('canvas'); layer.width = data.width; layer.height = data.height;
+            if (data.imageUrl) {
+                const image = new Image(); image.src = data.imageUrl; await image.decode();
+                const scale = Math.min(data.width / image.naturalWidth, data.height / image.naturalHeight), width = image.naturalWidth * scale, height = image.naturalHeight * scale;
+                layer.getContext('2d').drawImage(image, (data.width - width) / 2, (data.height - height) / 2, width, height);
+            }
+            editor.applyLayer({ name: data.name, image: layer, region: { x: 0, y: 0, width: data.width, height: data.height } });
+            hasControls = true; send('manga-drawing-changed'); send('manga-drawing-control-layer-ready', { name: data.name });
+        } catch (error) { send('manga-drawing-ai-error', { token: 'control', error: error.message || String(error) }); }
+    } else if (data?.type === 'manga-drawing-extend') {
+        try {
+            if (!editor || saving || aiBusy) throw new Error('Wait for generation or saving to finish before extending the canvas.');
+            send('manga-drawing-extended-psd', { psd: await editor.getPSD(), margins: data.margins });
+        } catch (error) { send('manga-drawing-ai-error', { token: 'control', error: error.message || String(error) }); }
     } else if (data?.type === 'manga-drawing-export') await save();
     else if (data?.type === 'manga-drawing-saved') {
         saving = false; document.documentElement.inert = false; submitSuccess?.(); submitSuccess = submitError = null;

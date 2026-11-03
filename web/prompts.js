@@ -101,20 +101,21 @@ export function options(defs, node, field) {
 export const referenceLimits = { anima_ref: 4, anima_snapref: 3 };
 
 // Starting values per LLLite type, from the November 2026 benchmark on Anima Turbo and mangaVision (VALIDATION.md).
+// `background` fills the transparent parts of a Klecks control layer before it is sent.
 export const controlTypes = {
-    pose3d: { label: '3D pose', patch: 'anima_3dpose_6200.safetensors', strength: 1, start: 0, end: 1,
+    pose3d: { label: '3D pose', background: 'black', patch: 'anima_3dpose_6200.safetensors', strength: 1, start: 0, end: 1,
         hint: 'Shaded 3D mannequin on black. Locks the pose firmly from 0.7; above 1.0 mangaVision can add borders.' },
-    depth: { label: 'Depth', patch: 'anima-lllite-depth-1.safetensors', strength: 1, start: 0, end: 1,
+    depth: { label: 'Depth', background: 'black', patch: 'anima-lllite-depth-1.safetensors', strength: 1, start: 0, end: 1,
         hint: 'White near, black far. Keeps silhouette and layout while the prompt changes clothes and setting.' },
-    scribble: { label: 'Scribble', patch: 'anima-lllite-scribble-1.safetensors', strength: 0.7, start: 0, end: 1,
+    scribble: { label: 'Scribble', background: 'black', patch: 'anima-lllite-scribble-1.safetensors', strength: 0.7, start: 0, end: 1,
         hint: 'White lines on black. Keeps the drawing\'s shapes; higher strengths copy more of its details.' },
-    lineart: { label: 'Lineart', patch: 'anima-lllite-lineart-1.safetensors', strength: 1, start: 0, end: 1,
+    lineart: { label: 'Lineart', background: 'white', patch: 'anima-lllite-lineart-1.safetensors', strength: 1, start: 0, end: 1,
         hint: 'Black lines on white. Keeps every line, so it redraws the source; use it to color or ink existing art.' },
-    anytest: { label: 'Any (lineart, scribble or grayscale)', patch: 'anima-lllite-any-test-like-v2.safetensors', strength: 0.7, start: 0, end: 1,
+    anytest: { label: 'Any (lineart, scribble or grayscale)', background: 'white', patch: 'anima-lllite-any-test-like-v2.safetensors', strength: 0.7, start: 0, end: 1,
         hint: 'Reads lineart, scribble or a grayscale image. Grayscale at 1.0 or more reproduces the source almost exactly.' },
-    regional: { label: 'Regions', patch: 'anima_regional_4335.safetensors', strength: 1, start: 0, end: 0.3,
+    regional: { label: 'Regions', background: 'black', patch: 'anima_regional_4335.safetensors', strength: 1, start: 0, end: 0.3,
         hint: 'One flat color per figure on black, shaped like the figures; the model follows the shapes literally. Name each figure\'s position in the prompt.' },
-    pose: { label: 'Pose skeleton (weak)', patch: 'anima-lllite-pose-1.safetensors', strength: 1.3, start: 0, end: 1,
+    pose: { label: 'Pose skeleton (weak)', background: 'black', patch: 'anima-lllite-pose-1.safetensors', strength: 1.3, start: 0, end: 1,
         hint: 'DWPose skeleton. Weak below 1.3; prefer 3D pose.' },
 };
 
@@ -184,8 +185,8 @@ export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) 
     const decode = (samples, vae) => alpha === 'chromakey' ? add('VNCCSChromaKey', { image: add('VAEDecode', { samples, vae }), tolerance: 0.15, softness: 0.12, despill_strength: 0.65, edge_width: 3,
         matte_cleanup: 0.1, foreground_recover: 0.35, edge_decontaminate: 0.75, edge_choke: 0.08, matte_method: 'guided_edge', screen_mode: 'auto', output_mode: 'straight_rgba', use_sam3_recovery_mask: false })
         : add('VAEDecode', { samples, vae });
-    // Sketch, BBox and project style previews stay in ComfyUI's temp folder instead of the project.
-    const save = images => ['sketch', 'bbox', 'style'].includes(operation) ? add('PreviewImage', { images }) : add('SaveImage', { images, filename_prefix: `anima-manga-maker/${jobId}/result` });
+    // Drawing editor results and project style previews stay in ComfyUI's temp folder instead of the project.
+    const save = images => ['sketch', 'bbox', 'style', 'inpaint'].includes(operation) ? add('PreviewImage', { images }) : add('SaveImage', { images, filename_prefix: `anima-manga-maker/${jobId}/result` });
     const size = imageDimensions(config, 8);
     let model = add('UNETLoader', { unet_name: check('UNETLoader', 'unet_name', config.model, 'Model'), weight_dtype: config.weight_dtype });
     const clip = load(config.encoder, config.encoder_type);
@@ -200,6 +201,16 @@ export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) 
     }
     // Controls are staged with the job; operations that stage no control image (sketch, bbox, previews) run without them.
     const controls = (config.controls || []).filter(c => c.enabled && c.image_path);
+    let inpaint;
+    if (operation === 'inpaint') {
+        // Masked image-to-image on the staged crop: the inpainting LLLite sees the image outside the mask, and only the mask is denoised.
+        if (engine !== 'anima') throw new Error('Inpainting uses the Anima engine.');
+        const pixels = add('ImageScale', { image: add('LoadImage', { image: config.inpaint.image_path }), upscale_method: 'lanczos', ...size, crop: 'disabled' });
+        const mask = add('ImageToMask', { image: add('LoadImage', { image: config.inpaint.mask_path }), channel: 'red' });
+        if (config.inpaint.patch) model = add('AnimaLLLiteApply', { model, model_patch: add('ModelPatchLoader', { name: check('ModelPatchLoader', 'name', config.inpaint.patch, 'Inpainting model') }),
+            image: pixels, strength: Number(config.inpaint.strength ?? 1), start_percent: 0, end_percent: 1, mask });
+        inpaint = add('SetLatentNoiseMask', { samples: add('VAEEncode', { pixels, vae }), mask });
+    }
     for (const control of controls) {
         // The Ref Adapter adds the reference frame to the sequence, so its LLLite must skip that frame (ComfyUI-Anima-CharRef-LLLite).
         model = add(engine === 'anima_ref' ? 'ExperimentalAnimaLLLiteRefApply' : 'AnimaLLLiteApply', { model,
@@ -252,8 +263,8 @@ export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) 
         const sigmas = add('BasicScheduler', { model, scheduler: config.scheduler, steps: Number(config.steps), denoise: sketching ? Number(config.denoise ?? 0.6) : 1 });
         sampled = add('SamplerCustomAdvanced', { noise: add('RandomNoise', { noise_seed: Number(config.seed) }), guider, sampler: add('KSamplerSelect', { sampler_name: config.sampler }), sigmas, latent_image: latent });
     } else {
-        sampled = add('KSampler', { model, positive, negative, latent_image: add('EmptyLatentImage', { ...size, batch_size: 1 }), seed: Number(config.seed), steps: Number(config.steps),
-            cfg: Number(config.cfg), sampler_name: config.sampler, scheduler: config.scheduler, denoise: 1 });
+        sampled = add('KSampler', { model, positive, negative, latent_image: inpaint || add('EmptyLatentImage', { ...size, batch_size: 1 }), seed: Number(config.seed), steps: Number(config.steps),
+            cfg: Number(config.cfg), sampler_name: config.sampler, scheduler: config.scheduler, denoise: inpaint ? Number(config.denoise) : 1 });
     }
     return { graph, outputNode: save(decode(sampled, vae))[0] };
 }

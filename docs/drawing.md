@@ -2,7 +2,7 @@
 
 [Documentation](README.md) · [Project README](../README.md)
 
-Klecks handles drawing and layered editing; the **Drawing workflow** selector adds generation or manga conversion to that same canvas. The result remains editable before it is saved to the project.
+Klecks handles drawing and layered editing; the **Drawing workflow** selector adds generation, inpainting or manga conversion to that same canvas. The result remains editable before it is saved to the project.
 
 **Draw reference** and **Draw panel**, in each gallery header, open a new canvas with a name, AR and MP. The **Draw with Klecks** context menu action opens an existing image to draw over it. [Klecks](https://github.com/bitbof/klecks) runs in a local iframe with brushes, a stabilizer, layers, selection, shapes, text and filters. **Save to project** or **Submit** saves a PNG usable for inference and a PSD with editable layers. Each subsequent save creates a new version; originals are preserved. Reopening a drawing loads its PSD; an imported or generated image opens as an Original layer plus a transparent Drawing layer. Closing asks for confirmation before discarding drawing changes made since the last save.
 
@@ -11,6 +11,20 @@ Klecks handles drawing and layered editing; the **Drawing workflow** selector ad
 **Sketch to Art** sends the **Whole canvas** or a **Selected region** to Anima Ref: the drawing is the reference image and the VAE-encoded starting latent, so **Denoise** in Sampling sets how far the result moves from the sketch (0.6 by default). Use **Update region preview**, drag a rectangle in the preview or enter X/Y/width/height. Dashed guides show the same region on the drawing canvas and follow zoom, panning, rotation and mirroring. They are display-only and are excluded from generation inputs, PNG and PSD. **Generate Sketch to Art** runs on demand. **Realtime on stroke release** starts after Klecks finishes the stroke, including its pressure and smoothing; it does not generate while the pen is held down. Only one job runs at a time. New strokes are combined into a request for the latest drawing, and stale results are skipped. **Cancel generation** targets only this editor's job.
 
 Sketch parameters and prompt/settings presets are stored separately for reference and panel drawings in the project. The preset controls at the top of Sketch to Art save, load, clone, import and export the prompt, sampling settings, model overrides, LoRAs, generation region and blending settings without closing Klecks. Models inherit the global Anima Ref configuration and can be overridden in **Models and advanced settings**. Realtime remains a session toggle and is not enabled by loading a preset.
+
+## Control layers
+
+**Control layers**, below the workflow settings in Sketch to Art, Inpaint and BBox to Image, adds Klecks layers named `Control · <type>` that feed LLLite controls: 3D pose, depth, scribble, lineart, any, regions or the pose skeleton, with the benchmarked model, strength and range from [Configuration](configuration.md#controls--lllite). Paint on the new layer, or use **Fill from image** to place a pose render or map from the project, ComfyUI's input folder or the computer. Transparent parts become the background the control expects (black, or white for lineart and any). Control layers are saved in the PSD and stay editable, but they are left out of the drawing sent to the model and of the saved PNG. A listed layer that was deleted or renamed in Klecks is marked as missing until it is added again.
+
+## Inpaint, outpaint and fix
+
+**Inpaint** repaints only a masked area with Anima and the inpainting LLLite (`anima-lllite-inpainting-v2`). **Add mask layer** creates `Control · Mask`; paint the area to replace in any color, then **Generate Inpaint**. The masked area plus **Context padding** is cropped, generated at **Working resolution · MP** under a latent noise mask and stitched back into an editable **Inpaint** layer. The mask is widened by **Edge feather** so the model repaints the band where the result fades into the drawing, and the painted area stays fully replaced. Control layers apply as well, so a 3D pose layer can guide a repainted figure. **Clear mask** empties the mask layer.
+
+| Task | Mask | Denoise | Use |
+| --- | --- | --- | --- |
+| **Inpaint** | Mask layer | 1.0 | Replace clothes, objects or background in an area |
+| **Outpaint** | Transparent canvas area, grown into the image by **Outpaint overlap**, plus the mask layer | 1.0 | Extend a panel. Set **Extend left/top/right/bottom · px** and **Extend canvas**: the drawing reopens on a larger canvas with every layer moved and the new area transparent. Klecks' undo history starts again after extending. Describe what the new area should show in the prompt. |
+| **Fix details** | Mask layer | 0.5 | Redraw a face, hands or another detail at the working resolution, so small areas gain detail, and keep the original's structure |
 
 ## Transparency
 

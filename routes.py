@@ -21,7 +21,7 @@ store = ProjectStore(Path(folder_paths.get_user_directory()) / 'anima-manga-make
                      Path(folder_paths.get_user_directory()) / 'anima-manga-maker-projects')
 routes = PromptServer.instance.routes
 # Operations whose result is shown once from ComfyUI's temp folder and never imported into the project.
-preview_operations = ('sketch', 'manga', 'bbox', 'style')
+preview_operations = ('sketch', 'inpaint', 'manga', 'bbox', 'style')
 
 
 def endpoint(fn):
@@ -297,7 +297,7 @@ def synchronize(project_id):
                 state = 'error'
                 job['error'] = 'The queue or history no longer contains this job; check ComfyUI history.'
             if job['operation'] in preview_operations and state in ('complete', 'error', 'cancelled'):
-                contained(folder_paths.get_temp_directory(), f"anima-manga-maker-drawing/{project_id}/{str(uuid.UUID(job['id']))}.png").unlink(missing_ok=True)
+                remove_drawing_inputs(project_id, str(uuid.UUID(job['id'])))
             if state != job['state']:
                 job['state'] = state
                 changed = True
@@ -316,9 +316,14 @@ def synchronize(project_id):
 @endpoint
 async def remove_drawing_input(request):
     project = request.match_info['project']; store.read(project)
-    job_id = str(uuid.UUID(request.match_info['job']))
-    contained(folder_paths.get_temp_directory(), f'anima-manga-maker-drawing/{project}/{job_id}.png').unlink(missing_ok=True)
+    remove_drawing_inputs(project, str(uuid.UUID(request.match_info['job'])))
     return web.json_response({'removed': True})
+
+
+# A drawing job stages its region as `<job>.png` and masks or control layers as `<job>-<part>.png`.
+def remove_drawing_inputs(project, job_id):
+    for path in contained(folder_paths.get_temp_directory(), f'anima-manga-maker-drawing/{project}').glob(f'{job_id}*.png'):
+        path.unlink(missing_ok=True)
 
 
 @routes.post('/anima-manga-maker/projects/{project}/jobs')

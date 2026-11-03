@@ -6,6 +6,8 @@ import { mangaControls } from './manga-panel.js';
 import { segmented, slider, toggle, seed } from './controls.js';
 import { buildMangaPrompt } from './manga-prompt.js';
 import { bboxControls } from './bbox-panel.js';
+import { controlLayers, maskLayer, upload } from './control-layers.js';
+import { inpaintControls } from './inpaint-panel.js';
 
 export function sketchControls(studio, kind, project, send, busyChanged) {
     const scope = `sketch_${kind}`, sketchState = studio.state(scope);
@@ -35,10 +37,10 @@ export function sketchControls(studio, kind, project, send, busyChanged) {
     }, { signal: abort.signal });
     let dimensions, previewImage, drag; const layerId = uuid().slice(0, 8);
     let mode = 'sketch';
-    const titles = { sketch: 'Sketch to Art', manga: 'Art to Manga Panel', bbox: 'BBox to Image' };
+    const titles = { sketch: 'Sketch to Art', inpaint: 'Inpaint', manga: 'Art to Manga Panel', bbox: 'BBox to Image' };
     const title = () => titles[mode];
     const hints = { sketch: 'Generate the canvas or a selected region as a new AI layer.', manga: 'Convert the canvas or selected region into an editable manga layer.',
-        bbox: 'Draw boxes on the canvas, describe them, then generate the whole canvas as a new AI layer.' };
+        bbox: 'Draw boxes on the canvas, describe them, then generate the whole canvas as a new AI layer.', inpaint: 'Mask an area, then repaint it as a new AI layer.' };
     const status = el('small', { role: 'status', text: 'Generate the canvas or a selected region as a new AI layer.' });
     const canvas = el('canvas', { class: 'amm-sketch-preview', width: 320, height: 200, 'aria-label': 'Sketch region preview', 'aria-describedby': 'amm-sketch-region-help', tabIndex: 0 });
     const realtime = el('input', { type: 'checkbox', 'aria-label': 'Realtime on stroke release', onchange: () => {
@@ -98,26 +100,29 @@ export function sketchControls(studio, kind, project, send, busyChanged) {
     const links = new Map(), linkOf = id => [...links].find(([, ids]) => ids.includes(id));
     const bbox = bboxControls(studio, kind, send, () => dimensions, () => { revision++; studio.saveSoon(); },
         id => linkOf(id)?.[1], (id, matrix) => send('manga-drawing-transform-layer', { name: linkOf(id)[0], matrix }));
+    const touched = () => { revision++; studio.saveSoon(); };
+    const layers = controlLayers(studio, `drawing_${kind}`, send, () => dimensions, touched);
+    const inpaint = inpaintControls(studio, kind, send, () => dimensions, touched);
     const heading = el('h3', { text: title() });
     const tool = segmented('Drawing workflow', Object.entries(titles), 'sketch', () => {
         if (mode === 'bbox') bbox.hide();
         mode = tool.value; revision++; realtime.checked = false; pending = false;
         heading.textContent = title(); generate.textContent = `Generate ${title()}`;
         element.setAttribute('aria-label', `${title()} controls`);
-        workflowSettings.replaceChildren({ sketch: sketchSettings, manga: mangaSettings, bbox: bbox.element }[mode]); scheduleLive();
-        regionControls.hidden = mode === 'bbox'; paintPreview(); if (mode === 'bbox') bbox.sync();
+        workflowSettings.replaceChildren({ sketch: sketchSettings, inpaint: inpaint.element, manga: mangaSettings, bbox: bbox.element }[mode]); scheduleLive();
+        regionControls.hidden = ['bbox', 'inpaint'].includes(mode); layers.element.hidden = mode === 'manga'; paintPreview(); if (mode === 'bbox') bbox.sync();
         status.textContent = hints[mode];
     });
     const sketchSettings = el('div', {}, presets, blend, prompt, transparency, sampling, models, toggle('Realtime on stroke release', realtime));
     const workflowSettings = el('div', {}, sketchSettings);
     const regionControls = el('div', {}, regionMode, el('small', { id: 'amm-sketch-region-help', text: 'Drag with the left mouse button on the preview to select the generation region. Choose Whole canvas to reset.' }), canvas, coordinates, preview, maskControls);
     const element = el('aside', { class: 'amm-sketch-controls', 'aria-label': 'Sketch to Art controls' }, tool, heading,
-        regionControls, workflowSettings, el('div', { class: 'amm-run-bar' }, el('div', { class: 'amm-row' }, generate, cancel), status));
+        regionControls, workflowSettings, layers.element, el('div', { class: 'amm-run-bar' }, el('div', { class: 'amm-row' }, generate, cancel), status));
     renderSettings();
     function update() { generate.disabled = !ready || !!active; preview.disabled = !ready || !!active; cancel.disabled = !active || stopping; tool.disabled = !!active; busyChanged(); }
     function region() {
         if (!dimensions) throw new Error('Update the canvas preview before selecting a region.');
-        if (mode === 'bbox' || cfg.region_mode !== 'region') return { x: 0, y: 0, ...dimensions };
+        if (mode !== 'sketch' && mode !== 'manga' || cfg.region_mode !== 'region') return { x: 0, y: 0, ...dimensions };
         const value = cfg.region || {};
         const x = Math.max(0, Math.min(dimensions.width - 1, Math.round(Number(value.x) || 0)));
         const y = Math.max(0, Math.min(dimensions.height - 1, Math.round(Number(value.y) || 0)));
@@ -127,7 +132,7 @@ export function sketchControls(studio, kind, project, send, busyChanged) {
     function paintPreview() {
         coordinates.hidden = cfg.region_mode !== 'region';
         if (!previewImage) return;
-        send('manga-drawing-guide-region', { region: mode !== 'bbox' && cfg.region_mode === 'region' ? region() : null });
+        send('manga-drawing-guide-region', { region: ['sketch', 'manga'].includes(mode) && cfg.region_mode === 'region' ? region() : null });
         const ctx = canvas.getContext('2d'); ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.drawImage(previewImage, 0, 0, canvas.width, canvas.height);
         if (maskEnabled.checked) {
             ctx.save(); ctx.globalAlpha = 0.35; ctx.drawImage(maskCanvas, 0, 0, canvas.width, canvas.height); ctx.restore();
@@ -192,8 +197,8 @@ export function sketchControls(studio, kind, project, send, busyChanged) {
         if (disposed || !ready) return;
         if (active) { pending = true; return; }
         stopping = false; pending = false; active = { token: uuid(), revision, mode, name: title(), operation: mode,
-            engine: { sketch: cfg.engine, manga: 'manga_lite', bbox: bbox.cfg.engine }[mode],
-            settings: structuredClone({ sketch: studio.styled(cfg), manga: { ...manga.cfg, feather: 0, blend_opacity: 100 }, bbox: studio.styled({ ...bbox.cfg, boxes: bbox.boxes, feather: 0, blend_opacity: 100 }) }[mode]) };
+            engine: { sketch: cfg.engine, inpaint: 'anima', manga: 'manga_lite', bbox: bbox.cfg.engine }[mode],
+            settings: structuredClone({ sketch: studio.styled(cfg), inpaint: studio.styled(inpaint.cfg), manga: { ...manga.cfg, feather: 0, blend_opacity: 100 }, bbox: studio.styled({ ...bbox.cfg, boxes: bbox.boxes, feather: 0, blend_opacity: 100 }) }[mode]) };
         status.textContent = 'Capturing drawing…'; update(); send('manga-drawing-snapshot', { token: active.token });
     }
     function liveEnabled() { return live.checked && mode === 'manga' && ready && !disposed; }
@@ -246,9 +251,16 @@ export function sketchControls(studio, kind, project, send, busyChanged) {
             if (!ticket || data.token !== ticket.token) return;
             if (stopping || disposed) { finish('Generation cancelled.'); return; }
             if (ticket.revision !== revision) { finish('Drawing changed · Waiting for the latest stroke.'); return; }
-            if (ticket.mode !== 'bbox') fitMaskRegion();
-            ticket.frameRevision = data.revision; ticket.region = region(); const r = ticket.region;
+            if (['sketch', 'manga'].includes(ticket.mode)) fitMaskRegion();
             const settings = ticket.settings;
+            ticket.frameRevision = data.revision; ticket.region = region();
+            if (ticket.mode === 'inpaint') {
+                const area = await inpaintArea(data.controls, settings);
+                if (!area) { finish(settings.task === 'outpaint' ? 'Nothing to fill · leave the new canvas area transparent or paint the mask layer.' : `Paint the area to replace on the ${maskLayer} layer first.`); return; }
+                Object.assign(ticket, area);
+            }
+            const r = ticket.region;
+            if (ticket.mode !== 'manga') settings.controls = await layers.stage(data.controls || [], r, project, ticket.token);
             if (settings.random_seed) settings.seed = Math.floor(Math.random() * 2 ** 48);
             let built;
             // BBox to Image is text-to-image: the layout comes from the boxes, so the drawing is not uploaded.
@@ -264,7 +276,7 @@ export function sketchControls(studio, kind, project, send, busyChanged) {
                     crop.getContext('2d').drawImage(previewImage, r.x, r.y, r.width, r.height, 0, 0, r.width, r.height);
                     blob = await new Promise(resolve => crop.toBlob(resolve, 'image/png'));
                 }
-                if (maskEnabled.checked) {
+                if (maskEnabled.checked && ticket.mode !== 'inpaint') {
                     const mask = document.createElement('canvas'); mask.width = r.width; mask.height = r.height;
                     mask.getContext('2d').drawImage(maskCanvas, r.x, r.y, r.width, r.height, 0, 0, r.width, r.height);
                     ticket.mask = await new Promise(resolve => mask.toBlob(resolve, 'image/png'));
@@ -275,7 +287,10 @@ export function sketchControls(studio, kind, project, send, busyChanged) {
                 if (!response.ok) throw new Error(uploaded.error || 'Could not stage the drawing region.');
                 if (stopping || disposed || ticket.revision !== revision) { finish('Drawing changed · Waiting for the latest stroke.'); return; }
                 const imagePath = `${uploaded.subfolder ? uploaded.subfolder + '/' : ''}${uploaded.name} [${uploaded.type}]`;
-                built = ticket.mode === 'manga' ? buildMangaPrompt(studio.defs, settings, imagePath) : buildPrompt(studio.defs, 'sketch', ticket.engine, { ...settings, aspect_ratio: `${r.width}:${r.height}` }, [imagePath], ticket.token);
+                if (ticket.mode === 'inpaint') {
+                    const inpaint = { image_path: imagePath, mask_path: await upload(ticket.modelMask, project, `${ticket.token}-mask`), patch: settings.inpaint_patch, strength: settings.inpaint_strength };
+                    built = buildPrompt(studio.defs, 'inpaint', ticket.engine, { ...settings, aspect_ratio: `${r.width}:${r.height}`, inpaint }, [], ticket.token);
+                } else built = ticket.mode === 'manga' ? buildMangaPrompt(studio.defs, settings, imagePath) : buildPrompt(studio.defs, 'sketch', ticket.engine, { ...settings, aspect_ratio: `${r.width}:${r.height}` }, [imagePath], ticket.token);
             }
             job = await request(`/projects/${project}/jobs`, { id: ticket.token, operation: ticket.operation, engine: ticket.engine, kind, space: kind,
                 name: ticket.name, settings: { ...settings, region: r }, prompt: built.graph, output_node: built.outputNode, sources: [] }, 'POST');
@@ -297,6 +312,44 @@ export function sketchControls(studio, kind, project, send, busyChanged) {
             finish(`${title()} failed: ${error.message}`);
         }
     }
+    // The mask layer, plus the transparent parts of the drawing when outpainting, grown into the image so the seam is repainted.
+    // The mask is widened by the feather so the model repaints the band where the result fades into the drawing; the painted area itself stays opaque.
+    // Returns the masked area with context padding, the stitch mask (alpha) and the model mask (white on black), both cropped to it.
+    async function inpaintArea(controls = [], settings) {
+        const { width, height } = dimensions, mask = document.createElement('canvas'); mask.width = width; mask.height = height;
+        const ctx = mask.getContext('2d'), layer = controls.find(item => item.name === maskLayer);
+        if (layer) { const bitmap = await createImageBitmap(layer.png); ctx.drawImage(bitmap, 0, 0); bitmap.close(); }
+        if (settings.task === 'outpaint') {
+            const empty = document.createElement('canvas'); empty.width = width; empty.height = height;
+            const emptyCtx = empty.getContext('2d'); emptyCtx.drawImage(previewImage, 0, 0);
+            const pixels = emptyCtx.getImageData(0, 0, width, height);
+            for (let i = 0; i < pixels.data.length; i += 4) { const open = pixels.data[i + 3] < 255; pixels.data.fill(open ? 255 : 0, i, i + 4); }
+            emptyCtx.putImageData(pixels, 0, 0);
+            const overlap = Math.max(0, Number(settings.outpaint_overlap) || 0);
+            if (overlap) ctx.filter = `blur(${overlap / 2}px)`;
+            ctx.drawImage(empty, 0, 0); ctx.filter = 'none';
+        }
+        const feather = Math.max(0, Number(settings.feather) || 0);
+        if (feather) { const grown = document.createElement('canvas'); grown.width = width; grown.height = height; const g = grown.getContext('2d'); g.filter = `blur(${feather / 2}px)`; g.drawImage(mask, 0, 0); ctx.drawImage(grown, 0, 0); }
+        const pixels = ctx.getImageData(0, 0, width, height);
+        let left = width, top = height, right = -1, bottom = -1;
+        for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+            const i = (y * width + x) * 4, on = pixels.data[i + 3] > 0;
+            pixels.data.fill(on ? 255 : 0, i, i + 4);
+            if (on) { left = Math.min(left, x); top = Math.min(top, y); right = Math.max(right, x); bottom = Math.max(bottom, y); }
+        }
+        if (right < 0) return null;
+        ctx.putImageData(pixels, 0, 0);
+        const pad = Math.max(0, Math.round(Number(settings.padding) || 0));
+        const x = Math.max(0, left - pad), y = Math.max(0, top - pad), r = { x, y, width: Math.min(width, right + pad + 1) - x, height: Math.min(height, bottom + pad + 1) - y };
+        const crop = background => {
+            const canvas = document.createElement('canvas'); canvas.width = r.width; canvas.height = r.height; const c = canvas.getContext('2d');
+            if (background) { c.fillStyle = background; c.fillRect(0, 0, r.width, r.height); } else if (feather) c.filter = `blur(${feather / 2}px)`;
+            c.drawImage(mask, r.x, r.y, r.width, r.height, 0, 0, r.width, r.height);
+            return new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+        };
+        return { region: r, mask: await crop(null), modelMask: await crop('black') };
+    }
     async function poll() {
         if (polling) return; polling = true;
         try {
@@ -309,7 +362,8 @@ export function sketchControls(studio, kind, project, send, busyChanged) {
                     if (active.revision !== revision) { finish('Skipped an older result · Latest drawing preserved.'); break; }
                     status.textContent = 'Blending the result into a new layer…'; active.applying = true;
                     send('manga-drawing-apply-art', { token: active.token, imageUrl: api.apiURL('/view?' + new URLSearchParams(job.drawing_output)),
-                        region: active.region, mask: active.mask, parts: active.parts, layerName: active.layerName, fit: active.mode === 'manga' ? 'contain' : 'stretch', revision: active.frameRevision, feather: active.settings.feather, opacity: active.settings.blend_opacity }); break;
+                        region: active.region, mask: active.mask, parts: active.parts, layerName: active.layerName, fit: active.mode === 'manga' ? 'contain' : 'stretch', revision: active.frameRevision,
+                        feather: active.mode === 'inpaint' ? 0 : active.settings.feather, opacity: active.settings.blend_opacity }); break;
                 }
                 if (job.state === 'error' || job.state === 'cancelled') { if (job.state === 'cancelled') pending = false; finish(job.state === 'error' ? `${title()} failed: ${JSON.stringify(job.error)}` : 'Generation cancelled.'); break; }
                 status.textContent = job.state === 'running' ? `Generating ${title()}…` : `${title()} queued…`;
@@ -324,6 +378,7 @@ export function sketchControls(studio, kind, project, send, busyChanged) {
     }
     async function handle(data) {
         if (data.type === 'manga-drawing-opened') { ready = true; update(); send('manga-drawing-snapshot', { token: 'preview' }); }
+        else if (data.type === 'manga-drawing-extended-psd') { ready = false; update(); status.textContent = 'Extending the canvas…'; }
         else if (data.type === 'manga-drawing-changed') { drawn++; if (data.source !== 'ai') revision++; }
         else if (data.type === 'manga-drawing-stroke-end') { if (realtime.checked) start(); scheduleLive(); }
         else if (data.type === 'manga-drawing-snapshot-result') {
@@ -333,13 +388,15 @@ export function sketchControls(studio, kind, project, send, busyChanged) {
             previewImage?.close(); previewImage = image; canvas.width = Math.max(1, Math.min(320, Math.round(220 * dimensions.width / dimensions.height))); canvas.height = Math.max(1, Math.round(canvas.width * dimensions.height / dimensions.width));
             if (!cfg.region) cfg.region = { x: 0, y: 0, ...dimensions };
             for (const key of Object.keys(inputs)) inputs[key].value = cfg.region[key]; paintPreview(); if (mode === 'bbox') bbox.sync();
+            const names = (data.controls || []).map(item => item.name); layers.sync(names); inpaint.sync(names);
             if (data.token === 'live') liveSnapshot?.resolve();
             else if (data.token !== 'preview') submit(data);
         } else if (data.type === 'manga-drawing-art-applied' && data.token === active?.token) {
             if (active.parts) { links.clear(); for (const part of active.parts) links.set(part.name, part.ids); }
             const refresh = !pending; finish('AI layer added · Save to project to preserve it.');
             if (refresh) send('manga-drawing-snapshot', { token: 'preview' });
-        } else if (data.type === 'manga-drawing-box-drawn' && mode === 'bbox' && dimensions) bbox.place(data.box, data.index);
+        } else if (data.type === 'manga-drawing-control-layer-ready') { if (!active) send('manga-drawing-snapshot', { token: 'preview' }); }
+        else if (data.type === 'manga-drawing-box-drawn' && mode === 'bbox' && dimensions) bbox.place(data.box, data.index);
         else if (data.type === 'manga-drawing-box-undo' && mode === 'bbox') bbox.undo();
         else if (data.type === 'manga-drawing-box-redo' && mode === 'bbox') bbox.redo();
         else if (data.type === 'manga-drawing-box-tool-end') bbox.stopDrawing();
@@ -348,6 +405,7 @@ export function sketchControls(studio, kind, project, send, busyChanged) {
         else if (data.type === 'manga-drawing-ai-error') {
             if (data.token === 'preview') status.textContent = data.error;
             else if (data.token === 'live') { liveSnapshot?.reject(new Error(data.error)); liveStatus.textContent = `Live preview failed: ${data.error}`; }
+            else if (data.token === 'control') studio.fail(new Error(data.error));
             else if (data.token === active?.token) finish(`${title()} failed: ${data.error}`);
         }
     }
