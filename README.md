@@ -2,7 +2,7 @@
 
 **Version:** 0.1.0-alpha.
 
-Anima Manga Maker Studio is a manga workspace for ComfyUI built on a single base model, [Anima](https://huggingface.co/circlestone-labs/Anima). Organize references and panels in projects, generate with Anima or Anima Ref, draw with Klecks, and compose pages with custom panel shapes and dialogue. Open **Anima Manga Maker Studio** from the sidebar or the **Anima Manga Maker** menu while keeping your ComfyUI graph intact.
+Anima Manga Maker Studio is a manga workspace for ComfyUI built on a single base model, [Anima](https://huggingface.co/circlestone-labs/Anima). Organize references and panels in projects, generate with Anima, Anima Ref or SnapRef, draw with Klecks, and compose pages with custom panel shapes and dialogue. Open **Anima Manga Maker Studio** from the sidebar or the **Anima Manga Maker** menu while keeping your ComfyUI graph intact.
 
 It is a separate project derived from [Manga Maker Studio](https://github.com/quinteroac/ComfyUI-MangaMakerStudio), which also supports Krea2, Qwen and MOSS. Both can be installed side by side; projects and settings are stored separately.
 
