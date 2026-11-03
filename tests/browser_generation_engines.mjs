@@ -74,11 +74,12 @@ try {
         await page.waitForTimeout(2200);
         if (space === 'panels') {
             // A control image from the gallery and an artist chain reach the queued graph.
-            const controls = view.locator('details').filter({ has: page.getByRole('button', { name: 'Add control', exact: true, includeHidden: true }) });
+            const controls = view.locator('details').filter({ has: page.getByLabel('Add control', { exact: true, includeHidden: true }) });
             await controls.locator('summary').click();
-            await controls.getByRole('button', { name: 'Add control', exact: true }).click();
-            const patch = await page.evaluate(async () => (await (await fetch('/object_info/ModelPatchLoader')).json()).ModelPatchLoader.input.required.name[0].find(name => name.startsWith('anima_')));
-            await controls.getByLabel('Control model', { exact: true }).fill(patch); await controls.getByLabel('Control model', { exact: true }).press('Tab');
+            await controls.getByLabel('Add control', { exact: true }).selectOption('pose3d');
+            const patch = 'anima_3dpose_6200.safetensors';
+            assert.equal(await controls.getByLabel('Control model', { exact: true }).inputValue(), patch, 'The control type fills its model');
+            await controls.getByText(/^3D pose · Shaded 3D mannequin/).waitFor();
             await controls.getByRole('button', { name: 'Choose control image', exact: true }).click();
             const picker = studio.getByRole('dialog', { name: 'Choose control image', exact: true });
             const controlImage = await picker.locator('.amm-asset-picker > button').first().getAttribute('data-asset-id');

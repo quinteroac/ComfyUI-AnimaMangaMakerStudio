@@ -1,7 +1,7 @@
 import { api } from '../../scripts/api.js';
 import { uuid, el, button, iconButton, field, request, assetUrl, download, chooseFile, sizeControls } from './client.js';
 import { sizeSettings, sizeLabel } from './size.js';
-import { options, defaultAttention, alphaMethods, referenceLimits, initialSettings, buildPrompt, composePrompt, promptSections, referencePrompt, parsePrompt, referencePresets, textGeneratorDefaults, textInstruction } from './prompts.js';
+import { options, defaultAttention, alphaMethods, referenceLimits, controlTypes, initialSettings, buildPrompt, composePrompt, promptSections, referencePrompt, parsePrompt, referencePresets, textGeneratorDefaults, textInstruction } from './prompts.js';
 import { newPage, normalizePage, PageEditor } from './editor.js';
 import { modelFields, profiles, globalModels, inheritModels, applyPreset, savedPreset } from './models.js';
 import { openDrawing } from './drawing.js';
@@ -401,6 +401,7 @@ export class Studio {
                         iconButton('Move control up', 'up', () => { [cfg.controls[index - 1], cfg.controls[index]] = [c, cfg.controls[index - 1]]; changed(); refresh(); }, { disabled: !index }),
                         iconButton('Move control down', 'down', () => { [cfg.controls[index + 1], cfg.controls[index]] = [c, cfg.controls[index + 1]]; changed(); refresh(); }, { disabled: index === cfg.controls.length - 1 }),
                         iconButton('Remove control', 'trash', () => { cfg.controls.splice(index, 1); changed(); refresh(); })),
+                    controlTypes[c.type] ? el('small', { text: `${controlTypes[c.type].label} · ${controlTypes[c.type].hint}` }) : null,
                     combo('Control model', options(this.defs, 'ModelPatchLoader', 'name'), c.patch, value => { c.patch = value; changed(); }),
                     el('div', { class: 'amm-row amm-control-image' }, asset ? el('img', { src: assetUrl(this.project.id, asset.id, true), alt: asset.name, class: 'amm-control-thumb' }) : null,
                         el('small', { text: asset ? `${asset.name}${asset.deleted ? ' · Trash' : asset.missing ? ' · Missing file' : ''}` : 'No control image' }),
@@ -413,7 +414,13 @@ export class Studio {
                     number('Control strength', 'strength', [0, 2], 0.05), number('Start · fraction of denoising', 'start', [0, 1], 0.01), number('End · fraction of denoising', 'end', [0, 1], 0.01));
             }));
         };
-        details.append(rows, iconButton('Add control', 'plus', () => { cfg.controls.push({ enabled: true, patch: '', image: '', strength: 1, start: 0, end: 1 }); changed(); refresh(); }, {}, true),
+        // A type fills the benchmarked model and range; the installed copy is found by filename in any subfolder.
+        const add = el('select', { 'aria-label': 'Add control', onchange: () => {
+            const { patch, strength, start, end } = controlTypes[add.value] || { patch: '', strength: 1, start: 0, end: 1 };
+            cfg.controls.push({ type: add.value, enabled: true, patch: options(this.defs, 'ModelPatchLoader', 'name').find(name => name.split('/').at(-1) === patch) || patch, image: '', strength, start, end });
+            add.value = ''; changed(); refresh();
+        } }, el('option', { value: '', text: 'Add control…' }), ...Object.entries(controlTypes).map(([value, type]) => el('option', { value, text: type.label })), el('option', { value: 'custom', text: 'Other LLLite model' }));
+        details.append(rows, field('Add control', add),
             el('small', { text: 'Anima ControlNet-LLLite models from models/model_patches, such as a 3D pose render or a regional color map as the control image. The image is center-cropped to the output size. With Anima Ref, controls need ComfyUI-Anima-CharRef-LLLite.' }));
         refresh(); host.append(details);
     }

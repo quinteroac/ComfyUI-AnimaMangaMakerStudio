@@ -33,6 +33,20 @@ The model chain is: LoRAs, LLLite controls, the reference adapter (Anima Ref or 
 
 In References and Panels, **Controls · LLLite** adds Anima ControlNet-LLLite models, each with a control image chosen from the project: for example a 3D pose render for `anima_3dpose_outline_7000` or a flat color map for `anima_regional_4335`. Each control has its model from `models/model_patches`, strength and the start and end of its effect as fractions of the denoising (a regional map typically ends around 0.3). The control image is center-cropped to the output size, so keep its aspect ratio close to the output's. Controls are stored with the operation and its presets; a control without an image is skipped. With Anima Ref, controls use the ComfyUI-Anima-CharRef-LLLite nodes so the reference frame does not receive the control.
 
+**Add control** offers types that fill the model, strength and range found in a November 2026 benchmark on Anima Turbo and mangaVision (fixed seed, strengths 0.7, 1.0 and 1.3):
+
+| Type | Model | Defaults | Control image | What the benchmark showed |
+| --- | --- | --- | --- | --- |
+| 3D pose | toyxyz `anima_3dpose_6200` | 1.0, 0 → 1 | Shaded mannequin on black | Locks the pose on both models from 0.7. Above 1.0 mangaVision added a frame border. |
+| Depth | kohya `anima-lllite-depth-1` | 1.0, 0 → 1 | White near, black far | Keeps silhouette and layout while clothes and setting follow the prompt: the best choice to change content in the same composition. |
+| Scribble | kohya `anima-lllite-scribble-1` | 0.7, 0 → 1 | White lines on black | Keeps shapes; at 1.0 and more it copies source details. |
+| Lineart | kohya `anima-lllite-lineart-1` | 1.0, 0 → 1 | Black lines on white | Keeps every line, including clothes and props: a faithful redraw. With mangaVision it inks the source as clean manga. |
+| Any | kohya `anima-lllite-any-test-like-v2` | 0.7, 0 → 1 | Lineart, scribble or grayscale | With lineart it behaves like Lineart; a grayscale image at 1.0 or more reproduces the source almost exactly, including hair color. |
+| Regions | toyxyz `anima_regional_4335` | 1.0, 0 → 0.3 | One flat color per figure on black | Separates figures, but follows the shapes literally: crude ellipses and boxes became round heads and box bodies on Turbo and drawn circles and panels on mangaVision. Use figure-shaped silhouettes and an early end. |
+| Pose skeleton | kohya `anima-lllite-pose-1` | 1.3, 0 → 1 | DWPose skeleton | Barely moves the pose below 1.3; 3D pose is much stronger. |
+
+The LLLite adds no measurable time on Turbo (about 4 s per 832×1216 image on an RTX 5060 Ti) or mangaVision at 30 steps (about 27 s). Inpainting v2 (`anima-lllite-inpainting-v2`) blended a masked repaint seamlessly with the rest of the image at denoise 1.0, where a latent noise mask alone left visible seams; at 0.75 it kept the original content. It needs a mask and an image-to-image start, so it arrives with the drawing editor's inpaint tool.
+
 ## Artist Mixer
 
 **Artist Mixer**, below the prompt, takes a comma-separated chain of Animadex artists, such as `@kubo tite, @mineru::0.6`, and mixes their styles into the model and the prompt conditioning with the Anima Artist Mixer. **Browse Animadex artists** adds artists to the chain. An empty chain uses plain text encoding. The extension cannot infer every incompatibility between checkpoints, encoders, VAEs and LoRAs; errors and metadata preserve the operation context, prompt, models, seeds and LoRAs.

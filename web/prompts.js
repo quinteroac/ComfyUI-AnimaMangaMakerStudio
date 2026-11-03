@@ -100,6 +100,24 @@ export function options(defs, node, field) {
 // Reference engines and how many pictures each takes: Anima Ref stitches up to four, SnapRef takes up to three of one character.
 export const referenceLimits = { anima_ref: 4, anima_snapref: 3 };
 
+// Starting values per LLLite type, from the November 2026 benchmark on Anima Turbo and mangaVision (VALIDATION.md).
+export const controlTypes = {
+    pose3d: { label: '3D pose', patch: 'anima_3dpose_6200.safetensors', strength: 1, start: 0, end: 1,
+        hint: 'Shaded 3D mannequin on black. Locks the pose firmly from 0.7; above 1.0 mangaVision can add borders.' },
+    depth: { label: 'Depth', patch: 'anima-lllite-depth-1.safetensors', strength: 1, start: 0, end: 1,
+        hint: 'White near, black far. Keeps silhouette and layout while the prompt changes clothes and setting.' },
+    scribble: { label: 'Scribble', patch: 'anima-lllite-scribble-1.safetensors', strength: 0.7, start: 0, end: 1,
+        hint: 'White lines on black. Keeps the drawing\'s shapes; higher strengths copy more of its details.' },
+    lineart: { label: 'Lineart', patch: 'anima-lllite-lineart-1.safetensors', strength: 1, start: 0, end: 1,
+        hint: 'Black lines on white. Keeps every line, so it redraws the source; use it to color or ink existing art.' },
+    anytest: { label: 'Any (lineart, scribble or grayscale)', patch: 'anima-lllite-any-test-like-v2.safetensors', strength: 0.7, start: 0, end: 1,
+        hint: 'Reads lineart, scribble or a grayscale image. Grayscale at 1.0 or more reproduces the source almost exactly.' },
+    regional: { label: 'Regions', patch: 'anima_regional_4335.safetensors', strength: 1, start: 0, end: 0.3,
+        hint: 'One flat color per figure on black, shaped like the figures; the model follows the shapes literally. Name each figure\'s position in the prompt.' },
+    pose: { label: 'Pose skeleton (weak)', patch: 'anima-lllite-pose-1.safetensors', strength: 1.3, start: 0, end: 1,
+        hint: 'DWPose skeleton. Weak below 1.3; prefer 3D pose.' },
+};
+
 export function defaultAttention(defs, engine) {
     if (!referenceLimits[engine]) return '';
     return options(defs, 'ModelAttentionBackend', 'attention').includes('comfy kitchen attention') ? 'comfy kitchen attention' : 'pytorch attention';

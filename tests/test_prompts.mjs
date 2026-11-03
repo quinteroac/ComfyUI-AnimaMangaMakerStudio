@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { buildPrompt, initialSettings, options, composePrompt, referencePrompt, parsePrompt, referencePresets, promptSections, textInstruction, textGeneratorDefaults } from '../web/prompts.js';
+import { buildPrompt, initialSettings, options, controlTypes, composePrompt, referencePrompt, parsePrompt, referencePresets, promptSections, textInstruction, textGeneratorDefaults } from '../web/prompts.js';
 import { boxGroups, rectMatrix, transformRect } from '../web/size.js';
 import { globalModels, inheritModels } from '../web/models.js';
 
@@ -105,6 +105,15 @@ for (const [engine, images, apply, loader] of [['anima', [], 'AnimaLLLiteApply',
     jobs.push({ engine, op: 'panels', count: images.length, ...built });
 }
 assert(Object.values(buildPrompt(defs, 'panels', 'anima_ref', animaRef, ['a.png'], 'plain').graph).some(n => n.class_type === 'AnimaRefAdapterLoader'));
+
+// Each control type's benchmarked defaults build a valid graph when its model is installed.
+for (const [type, { patch, strength, start, end }] of Object.entries(controlTypes)) {
+    assert(strength > 0 && start < end, type);
+    if (!options(defs, 'ModelPatchLoader', 'name').includes(patch)) continue;
+    const built = buildPrompt(defs, 'panels', 'anima', { ...configFor('anima', { prompt: 'x' }), controls: [{ type, enabled: true, patch, image_path: 'control.png', strength, start, end }] }, [], type);
+    assert.equal(Object.values(built.graph).find(n => n.class_type === 'AnimaLLLiteApply').inputs.end_percent, end);
+    jobs.push({ engine: 'anima', op: 'panels', count: 0, ...built });
+}
 
 // Anima Artist Mixer replaces the positive text encoding and wraps the model.
 for (const [engine, images, op] of [['anima', [], 'panels'], ['anima_ref', ['a.png'], 'panels'], ['anima', [], 'bbox']]) {
