@@ -113,21 +113,59 @@ try {
     assert(edges.width > edges.height && depth.width === edges.width, `Layers fill the 3:2 canvas: ${edges.width}x${edges.height}`);
     assert(edges.light > total * 0.8 && edges.dark > total * 0.002, `Black edges on white: ${edges.dark} dark of ${total}`);
     assert(depth.mid > total * 0.5, `Grey depth gradient: ${depth.mid} mid-grey of ${total}`);
-    const saved = (await (await fetch(`${backend.url}/anima-manga-maker/projects/${backend.project}`)).json()).workspace;
-    assert.equal(saved.scenes.length, 1); assert.equal(saved.scenes[0].objects.at(-1).kind, 'stairs'); assert.equal(saved.scenes[0].objects.at(-1).x, 3);
-    assert.deepEqual({ ...saved.drawing_panels.scene, scene: undefined }, { scene: undefined, camera: 'Low front', edges: true, depth: true });
-    const rows = saved.drawing_panels.control_layers;
-    assert.deepEqual(rows.map(c => [c.name, c.type, c.strength]), [['Control · Scene edges', 'anytest', 0.7], ['Control · Scene depth', 'depth', 1]]);
-    // Reopening keeps the location and camera; a second render replaces the layers instead of adding more.
+    const project = async () => (await fetch(`${backend.url}/anima-manga-maker/projects/${backend.project}`)).json();
+    const workspace = (await project()).workspace;
+    assert.equal(workspace.scenes.length, 1); assert.equal(workspace.scenes[0].objects.at(-1).kind, 'stairs'); assert.equal(workspace.scenes[0].objects.at(-1).x, 3);
+    assert.deepEqual(workspace.drawing_panels.control_layers.map(c => [c.name, c.type, c.strength]), [['Control · Scene edges', 'anytest', 0.7], ['Control · Scene depth', 'depth', 1]]);
+    // The drawing keeps its own scene and camera.
+    await dialog.getByRole('button', { name: 'Save to project', exact: true }).click();
+    await dialog.getByText('Saved to project · Layers preserved', { exact: true }).waitFor();
+    const drawing = (await project()).assets.find(a => a.name === 'Scene test');
+    assert.deepEqual({ ...drawing.metadata.scene, scene: typeof drawing.metadata.scene.scene }, { scene: 'string', camera: 'Low front', edges: true, depth: true });
+    await dialog.getByRole('button', { name: 'Close', exact: true }).click(); await dialog.waitFor({ state: 'detached' });
+    // Reopening it starts from that camera, lists the drawing as a user of the scene, and a new render replaces the layers.
+    const card = studio.locator(`.amm-panels [data-asset-id="${drawing.id}"]`).first();
+    await card.getByRole('button', { name: 'Image actions', exact: true }).click();
+    await card.getByRole('menuitem', { name: 'Draw with Klecks', exact: true }).click();
+    const reopened = await (await dialog.locator('iframe').elementHandle()).contentFrame();
+    await reopened.locator('.g-root:not(.top-overlay)').waitFor(); await page.waitForTimeout(1500);
+    await controls.locator('summary').filter({ hasText: /^Control layers$/ }).click();
     await controls.getByRole('button', { name: 'Build scene…', exact: true }).click();
     assert.equal(await sceneDialog.getByLabel('Camera', { exact: true }).inputValue(), 'Low front');
+    await sceneDialog.getByText('Used by 1 image: Scene test. Changes apply to their next generation.', { exact: true }).waitFor();
     await sceneDialog.getByRole('button', { name: 'Apply to layers', exact: true }).click(); await sceneDialog.waitFor({ state: 'detached' });
     await page.waitForTimeout(1000);
-    assert.equal((await (await fetch(`${backend.url}/anima-manga-maker/projects/${backend.project}`)).json()).workspace.drawing_panels.control_layers.length, 2);
+    assert.equal((await project()).workspace.drawing_panels.control_layers.length, 2);
     await dialog.getByRole('button', { name: 'Close', exact: true }).click();
     await studio.getByRole('dialog', { name: 'Discard unsaved drawing?', exact: true }).getByRole('button', { name: 'Discard changes', exact: true }).click();
+
+    // Panels: an Any control takes the Back corner camera; each generation renders it at the output size and stages it.
+    const view = studio.locator('.amm-panels');
+    const stack = view.locator('details').filter({ has: page.getByLabel('Add control', { exact: true, includeHidden: true }) });
+    await stack.locator('summary').click();
+    await stack.getByLabel('Add control', { exact: true }).selectOption('anytest');
+    await stack.getByRole('button', { name: 'From scene…', exact: true }).click();
+    await sceneDialog.getByLabel('Camera', { exact: true }).waitFor();
+    assert.equal(await sceneDialog.getByRole('switch', { name: 'Depth layer' }).count(), 0, 'Choosing a camera renders no layers');
+    await sceneDialog.getByLabel('Camera', { exact: true }).selectOption('Back corner');
+    await sceneDialog.getByRole('button', { name: 'Use this camera', exact: true }).click(); await sceneDialog.waitFor({ state: 'detached' });
+    await stack.getByText('Scene · Location 1 · Back corner · edges', { exact: true }).waitFor();
+    const before = queued.length, uploaded = uploads.length;
+    await view.getByRole('button', { name: 'Generate panel', exact: true }).click();
+    for (let i = 0; i < 60 && queued.length === before; i++) await page.waitForTimeout(100);
+    assert.equal(queued.length, before + 1, await studio.locator('.amm-error').textContent());
+    const graph = queued.at(-1).prompt, lllite = Object.values(graph).find(n => n.class_type === 'AnimaLLLiteApply');
+    assert.equal(graph[lllite.inputs.model_patch[0]].inputs.name, 'anima-lllite-any-test-like-v2.safetensors');
+    assert.match(graph[lllite.inputs.image[0]].inputs.image, new RegExp(`^anima-manga-maker-drawing/${backend.project}/scene-[0-9a-f]+\\.png \\[temp\\]$`));
+    assert.equal(uploads.length, uploaded + 1);
+    if (out) { const u = uploads.at(-1); await fs.writeFile(`${out}_panel.png`, Buffer.from(await (await fetch(`${backend.url}/test/view?${new URLSearchParams({ filename: u.name, subfolder: u.subfolder })}`)).arrayBuffer())); }
+    // The panel's settings keep the scene control, so it counts as a user of the scene.
+    await page.waitForTimeout(2500);
+    const panel = (await project()).assets.find(a => a.metadata?.settings?.controls?.some(c => c.scene));
+    assert(panel, 'The generated panel keeps the scene control in its settings');
+    assert.deepEqual(panel.metadata.settings.controls.find(c => c.scene).scene, { scene: workspace.scenes[0].id, camera: 'Back corner' });
     assert.deepEqual(errors, []);
-    console.log(`Scene passed: classroom blockout edited, rendered from a saved camera into edge (${edges.dark} ink px) and depth layers, scene and camera kept, re-render replaces layers.`);
+    console.log(`Scene passed: classroom blockout edited and rendered into edge (${edges.dark} ink px) and depth layers; the drawing keeps its scene and camera on reopen; a panel control renders its scene camera on every generation and its result counts as a user of the scene.`);
 } catch (error) {
     await page.screenshot({ path: '/tmp/manga-scene-error.png' }); console.error((await page.locator('.amm-studio').innerText().catch(() => 'Studio closed')).slice(-4000), errors); throw error;
 } finally {

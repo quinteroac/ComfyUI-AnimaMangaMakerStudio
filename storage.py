@@ -202,7 +202,7 @@ class ProjectStore:
             raise ValueError('This asset has no editable drawing')
         return contained(self.directory(project_id), path)
 
-    def import_drawing(self, project_id, kind, image, document, name, parent=None):
+    def import_drawing(self, project_id, kind, image, document, name, parent=None, scene=None):
         if kind not in ('references', 'panels'):
             raise ValueError('Drawings must be references or panels')
         if len(document) < 26 or document[:6] != b'8BPS\x00\x01':
@@ -217,7 +217,7 @@ class ProjectStore:
             path.write_bytes(document)
             saved = False
             try:
-                asset = self.import_image(project_id, kind, image, name, {'editor': 'klecks', 'drawing_document': relative}, parent, [parent] if parent else [])
+                asset = self.import_image(project_id, kind, image, name, {'editor': 'klecks', 'drawing_document': relative, **({'scene': scene} if scene else {})}, parent, [parent] if parent else [])
                 saved = True
                 return asset
             finally:

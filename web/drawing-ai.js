@@ -10,7 +10,7 @@ import { controlLayers, maskLayer, upload } from './control-layers.js';
 import { inpaintControls } from './inpaint-panel.js';
 import { redrawControls } from './redraw-panel.js';
 
-export function sketchControls(studio, kind, project, send, busyChanged) {
+export function sketchControls(studio, kind, project, send, busyChanged, scene) {
     const scope = `sketch_${kind}`, sketchState = studio.state(scope);
     // Sketch to Art runs the Anima Ref Adapter with the drawing as its reference.
     const sketchConfig = engine => {
@@ -105,7 +105,7 @@ export function sketchControls(studio, kind, project, send, busyChanged) {
     const bbox = bboxControls(studio, kind, send, () => dimensions, () => { revision++; studio.saveSoon(); },
         id => linkOf(id)?.[1], (id, matrix) => send('manga-drawing-transform-layer', { name: linkOf(id)[0], matrix }));
     const touched = () => { revision++; studio.saveSoon(); };
-    const layers = controlLayers(studio, `drawing_${kind}`, send, () => dimensions, touched);
+    const layers = controlLayers(studio, `drawing_${kind}`, send, () => dimensions, touched, scene);
     const inpaint = inpaintControls(studio, kind, send, () => dimensions, touched);
     const redraw = redrawControls(studio, kind, touched);
     const heading = el('h3', { text: title() });
@@ -419,7 +419,7 @@ export function sketchControls(studio, kind, project, send, busyChanged) {
             else if (data.token === active?.token) finish(`${title()} failed: ${data.error}`);
         }
     }
-    return { element, handle, get busy() { return !!active; }, dispose() {
+    return { element, handle, get busy() { return !!active; }, get scene() { return layers.scene; }, dispose() {
         disposed = true; pending = false; abort.abort(); wakePoll?.(); clearTimeout(liveTimer); previewImage?.close(); stop();
     } };
 }

@@ -1,6 +1,6 @@
 import { api } from '../../scripts/api.js';
 import { uuid, el, button, iconButton, field, request, assetUrl, inputUrl, download, chooseFile, sizeControls } from './client.js';
-import { sizeSettings, sizeLabel } from './size.js';
+import { sizeSettings, sizeLabel, imageDimensions } from './size.js';
 import { options, defaultAttention, alphaMethods, referenceLimits, controlTypes, redrawModes, tilePatches, installedPatch, initialSettings, buildPrompt, composePrompt, promptSections, referencePrompt, parsePrompt, referencePresets, textGeneratorDefaults, textInstruction } from './prompts.js';
 import { newPage, normalizePage, PageEditor } from './editor.js';
 import { modelFields, profiles, globalModels, inheritModels, applyPreset, savedPreset } from './models.js';
@@ -9,6 +9,8 @@ import { combo, segmented, slider, toggle, seed, resizer, summarize } from './co
 import { StoryStudio } from './story.js';
 import { assistantSettings } from './assistant.js';
 import { openStylePicker } from './style-picker.js';
+import { sceneEditor, renderScene } from './scene-editor.js';
+import { upload } from './control-layers.js';
 
 const spaces = { story: 'Story', style: 'Style', references: 'References', panels: 'Panels', design: 'Page layout' };
 const engines = { anima: 'Anima', anima_ref: 'Anima Ref', anima_snapref: 'Anima SnapRef' };
@@ -399,7 +401,7 @@ export class Studio {
         const refresh = () => {
             summarize(details, `${cfg.controls.filter(c => c.enabled).length} enabled`);
             rows.replaceChildren(...cfg.controls.map((c, index) => {
-                const asset = this.project.assets.find(a => a.id === c.image);
+                const asset = this.project.assets.find(a => a.id === c.image), scene = c.scene && this.project.workspace.scenes?.find(s => s.id === c.scene.scene);
                 const number = (label, key, range, step) => slider(label, el('input', { type: 'number', 'aria-label': label, value: c[key], step, onchange: e => { c[key] = Number(e.target.value); changed(); } }), range);
                 return el('div', { class: `amm-lora${c.enabled ? '' : ' amm-disabled'}` },
                     el('div', { class: 'amm-row' }, toggle('Enabled', el('input', { type: 'checkbox', checked: c.enabled, onchange: e => { c.enabled = e.target.checked; changed(); refresh(); } })),
@@ -409,8 +411,13 @@ export class Studio {
                     controlTypes[c.type] ? el('small', { text: `${controlTypes[c.type].label} · ${controlTypes[c.type].hint}` }) : null,
                     combo('Control model', options(this.defs, 'ModelPatchLoader', 'name'), c.patch, value => { c.patch = value; changed(); }),
                     el('div', { class: 'amm-row amm-control-image' }, asset ? el('img', { src: assetUrl(this.project.id, asset.id, true), alt: asset.name, class: 'amm-control-thumb' }) : null,
-                        el('small', { text: asset ? `${asset.name}${asset.deleted ? ' · Trash' : asset.missing ? ' · Missing file' : ''}` : 'No control image' }),
-                        iconButton('Choose control image', 'image', () => this.chooseImage('Choose control image', ref => { c.image = ref; changed(); refresh(); this.jobs(); return true; }))),
+                        el('small', { text: c.scene ? `Scene · ${scene ? `${scene.name} · ${c.scene.camera}` : 'deleted scene'} · ${c.type === 'depth' ? 'depth' : 'edges'}` : asset ? `${asset.name}${asset.deleted ? ' · Trash' : asset.missing ? ' · Missing file' : ''}` : 'No control image' }),
+                        iconButton('Choose control image', 'image', () => this.chooseImage('Choose control image', ref => { c.image = ref; delete c.scene; changed(); refresh(); this.jobs(); return true; })),
+                        // A scene camera is rendered at the output size on every generation, so edits to the scene reach the next panel.
+                        button('From scene…', () => this.action(async () => {
+                            const choice = await sceneEditor(this, c.scene, imageDimensions(cfg), true); if (!choice) return;
+                            c.scene = choice; c.image = ''; changed(); refresh();
+                        }))),
                     number('Control strength', 'strength', [0, 2], 0.05), number('Start · fraction of denoising', 'start', [0, 1], 0.01), number('End · fraction of denoising', 'end', [0, 1], 0.01));
             }));
         };
@@ -835,9 +842,9 @@ export class Studio {
             if (!textTask) cfg.prompt_sections = this.styled(cfg).prompt_sections;
             if (cfg.random_seed) cfg.seed = Math.floor(Math.random() * 2 ** 48);
             const references = textTask ? operation === 'describe' ? [assetId] : [] : referenceLimits[engine] ? cfg.references : [];
-            // Control images are staged with the references; a control without an image is skipped.
-            const controls = !textTask && ['references', 'panels'].includes(operation) ? (cfg.controls || []).filter(c => c.enabled && c.image) : [];
-            const ids = [...new Set([...references, ...controls.map(c => c.image)])];
+            // Control images are staged with the references and scene controls are rendered; a control without either is skipped.
+            const controls = !textTask && ['references', 'panels'].includes(operation) ? (cfg.controls || []).filter(c => c.enabled && (c.image || c.scene)) : [];
+            const ids = [...new Set([...references, ...controls.filter(c => c.image).map(c => c.image)])];
             const unavailable = ids.find(id => !project.assets.some(a => a.id === id && !a.missing && !a.deleted));
             if (unavailable) {
                 const asset = project.assets.find(a => a.id === unavailable);
@@ -847,7 +854,15 @@ export class Studio {
             if (!textTask && references.length && cfg.size_mode !== 'manual') Object.assign(cfg, sizeSettings(project.assets.find(a => a.id === references[0])), { size_mode: 'original' });
             const paths = await request(`/projects/${project.id}/stage`, { assets: ids }, 'POST');
             const staged = new Map(ids.map((id, i) => [id, paths[i]]));
-            controls.forEach(control => control.image_path = staged.get(control.image));
+            for (const control of controls) {
+                if (!control.scene) { control.image_path = staged.get(control.image); continue; }
+                const scene = project.workspace.scenes?.find(s => s.id === control.scene.scene);
+                if (!scene) throw new Error('The scene of a control was deleted. Choose another scene or image for it.');
+                const png = await (await fetch(await renderScene(scene, control.scene.camera, imageDimensions(cfg), control.type === 'depth' ? 'depth' : 'edges'))).blob();
+                // Named by content (FNV-1a): ComfyUI keeps one copy of an identical upload, and a queued job keeps the render it was given.
+                let hash = 0x811c9dc5; for (const byte of new Uint8Array(await png.arrayBuffer())) hash = Math.imul(hash ^ byte, 0x01000193) >>> 0;
+                control.image_path = await upload(png, project.id, `scene-${hash.toString(16)}`);
+            }
             jobId = uuid(); const built = buildPrompt(this.defs, operation, engine, cfg, references.map(id => staged.get(id)), jobId);
             const kind = textTask || operation === 'references' ? 'references' : 'panels';
             const job = { id: jobId, operation, engine, kind, settings: cfg, prompt: built.graph, output_node: built.outputNode, parent: null, sources: ids,

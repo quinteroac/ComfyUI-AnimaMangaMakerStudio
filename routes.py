@@ -57,7 +57,7 @@ async def save_drawing(request):
         fields[part.name] = bytes(await part.read()) if part.name in ('image', 'document') else await part.text()
     if not fields.get('image') or not fields.get('document'):
         raise ValueError('The PNG and PSD drawing are required')
-    return web.json_response(await asyncio.to_thread(store.import_drawing, request.match_info['project'], fields.get('kind', 'references'), fields['image'], fields['document'], fields.get('name', 'Drawing'), fields.get('parent') or None))
+    return web.json_response(await asyncio.to_thread(store.import_drawing, request.match_info['project'], fields.get('kind', 'references'), fields['image'], fields['document'], fields.get('name', 'Drawing'), fields.get('parent') or None, json.loads(fields['scene']) if fields.get('scene') else None))
 
 
 @routes.get('/anima-manga-maker/projects/{project}/assets/{asset}/drawing')

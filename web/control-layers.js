@@ -9,7 +9,8 @@ export const maskLayer = 'Control · Mask';
 
 // Klecks layers named `Control · …` that feed LLLite controls. The list and its settings belong to the drawing scope;
 // the layers themselves live in the drawing's PSD, so a listed layer may be missing until it is added again.
-export function controlLayers(studio, scope, send, dimensions, changed) {
+// `scene` is the drawing's own scene and camera, saved with the drawing.
+export function controlLayers(studio, scope, send, dimensions, changed, scene = null) {
     const state = studio.state(scope); state.control_layers ||= [];
     let present = new Set(), latest = [];
     const element = el('details', {}, el('summary', { text: 'Control layers' }));
@@ -58,10 +59,10 @@ export function controlLayers(studio, scope, send, dimensions, changed) {
         const c = entry(add.value); add.value = ''; create(c.name); changed(); render();
     } }, el('option', { value: '', text: 'Add control layer…' }), ...Object.entries(controlTypes).map(([value, type]) => el('option', { value, text: type.label })));
     // The scene's edges feed the Any LLLite and its depth the Depth LLLite, each in its own layer that a new render replaces.
-    const scene = button('Build scene…', () => studio.action(async () => {
+    const build = button('Build scene…', () => studio.action(async () => {
         if (!dimensions()) throw new Error('Wait for the drawing to open before building a scene.');
-        const result = await sceneEditor(studio, state.scene, dimensions()); if (!result) return;
-        const { maps, ...choice } = result; state.scene = choice;
+        const result = await sceneEditor(studio, scene, dimensions()); if (!result) return;
+        const { maps, ...choice } = result; scene = choice;
         for (const [map, type, name] of [['edges', 'anytest', 'Control · Scene edges'], ['depth', 'depth', 'Control · Scene depth']]) {
             if (!maps[map]) continue;
             const c = state.control_layers.find(c => c.name === name) || entry(type, name); c.enabled = true; create(name, maps[map]);
@@ -69,10 +70,11 @@ export function controlLayers(studio, scope, send, dimensions, changed) {
         changed(); render();
     }));
     element.append(field('Add control layer', add, 'Paint on the new layer, or fill it from an image; transparent parts become the background the control expects. Control layers are saved in the PSD but left out of the drawing sent to the model and of the PNG.'),
-        el('div', { class: 'amm-field' }, scene, el('small', { text: 'Block out a location with boxes and cameras; the camera view becomes control layers for the background.' })), rows);
+        el('div', { class: 'amm-field' }, build, el('small', { text: 'Block out a location with boxes and cameras; the camera view becomes control layers for the background.' })), rows);
     render();
     return {
         element,
+        get scene() { return scene; },
         // Control layers from the latest snapshot.
         sync(controls) { latest = controls; present = new Set(controls.map(item => item.name)); render(); },
         // Crops each enabled control layer to the generation region, flattens it onto its background and stages it as a temporary input.

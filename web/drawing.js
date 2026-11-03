@@ -23,7 +23,7 @@ function drawingEditor(studio, kind, source, drawingName, size) {
         el('div', { class: 'amm-toolbar' }, field('Drawing name', name), save, status), iframe));
     dialog.classList.add('amm-drawing-dialog');
     let parent = source?.id || null, saving = false, exporting = false, opened = false, dirty = false, reopen = null;
-    const art = sketchControls(studio, kind, project, send, () => { save.disabled = saving || exporting || !opened || art.busy; send('manga-drawing-ai-busy', { busy: art.busy }); });
+    const art = sketchControls(studio, kind, project, send, () => { save.disabled = saving || exporting || !opened || art.busy; send('manga-drawing-ai-busy', { busy: art.busy }); }, source?.metadata?.scene || null);
     const workspace = el('div', { class: 'amm-drawing-workspace' }); iframe.replaceWith(workspace); workspace.append(iframe, art.element);
     const close = () => {
         if (saving || exporting) return;
@@ -54,7 +54,7 @@ function drawingEditor(studio, kind, source, drawingName, size) {
             try {
                 if (!(data.png instanceof Blob) || !(data.psd instanceof Blob)) throw new Error('The editor did not provide PNG and PSD files.');
                 const form = new FormData(); form.append('image', data.png, 'drawing.png'); form.append('document', data.psd, 'drawing.psd');
-                form.append('kind', kind); form.append('name', name.value || drawingName); if (parent) form.append('parent', parent);
+                form.append('kind', kind); form.append('name', name.value || drawingName); if (parent) form.append('parent', parent); if (art.scene) form.append('scene', JSON.stringify(art.scene));
                 const asset = await request(`/projects/${project}/drawings`, form, 'POST'); parent = asset.id;
                 if (studio.project?.id === project) {
                     const latest = await request(`/projects/${project}`); studio.project.assets = latest.assets;

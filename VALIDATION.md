@@ -1,3 +1,8 @@
+# Scene per drawing and in Panels — November 2, 2026
+
+- **Chromium `browser_scene.mjs`:** a saved drawing stores its scene and camera (Low front) in the asset; reopening it with **Draw with Klecks** starts the scene editor at that camera and lists the drawing under "Used by". In Panels, an Any control with **From scene…** and the Back corner camera renders the scene at the 1000×1000 output on **Generate panel**, stages it as `scene-<hash>.png` and queues it into `anima-lllite-any-test-like-v2`; the result keeps the scene control in its settings. `browser_generation_engines.mjs`, `browser_sketch.mjs`, `browser_inpaint.mjs`, `browser_pose.mjs` and `browser.mjs` still pass.
+- **Real inference** of two panels of the same scene (the drawing's Low front layer, the Panels control's Back corner render, Any 0.7, seed 11) on Turbo and mangaVision: both show one classroom from two angles with the same desk rows, ceiling lights and window wall. Prompted items land on the walls in view: with "blackboard" in the prompt, the Low front shot put one on the door wall.
+
 # Scene blockout — November 2, 2026
 
 - **Chromium `browser_scene.mjs`:** **Build scene…** opens the classroom template with its Back corner and Low front cameras; a stairs piece is added and moved, and **Apply to layers** renders the Low front camera at the drawing's 3:2 size into `Control · Scene edges` (black edges on white, Any 0.7) and `Control · Scene depth` (Depth 1.0). The scene, the piece and the chosen camera are saved in the project, reopening starts from the same camera, and a second render replaces the two layers. `browser_pose.mjs` still passes with the shared control-layer code.
