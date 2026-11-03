@@ -3,6 +3,7 @@
 - Installed `anima_tiled_lllite_v1.safetensors` from the ModelScope mirror (SHA-256 verified); the v2 files are gated on Hugging Face and need a login on Civitai. It loads with the core node (v2 named keys, 3 channels). The author's workflow feeds the color image itself as the control on Anima Base, 30 steps, CFG 4, denoise 1.
 - Real Turbo upscale to 2 MP with the Studio's graph: Tile v1 at denoise 0.5 kept the amber eyes, the red bow and the composition while sharpening lines; at 1.0 it still kept the colors and added more detail with more changes. The grayscale any-test default at 0.3 looked similar but holds no color. Upscale now defaults to a installed tile model at 0.5 (v2 preferred), else grayscale at 0.3.
 - 44 graphs match the installed schemas; `browser_redraw.mjs` passes with the tile default.
+- Then installed `animaTileRepair_v20.safetensors` from Civitai with the user's token (SHA-256 verified). Same upscale: v2 at 0.5 matched v1 at 0.5 closely; at 1.0 v2 stayed much closer to the source (face, eye color, crisp lines) where v1 changed the face. The Studio picks v2 first.
 
 # Redraw, lineart and upscale — November 2, 2026
 
