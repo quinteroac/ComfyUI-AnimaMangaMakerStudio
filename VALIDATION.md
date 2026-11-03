@@ -1,3 +1,8 @@
+# Scene models, figures and ink — November 2, 2026
+
+- **Chromium `browser_scene.mjs`:** a GLB built by the test and uploaded with **Upload GLB…** is stored in `input/3d` and loads as a scene piece; two figures (standing and sitting) render into `Control · Scene regions` as flat red and blue on black (only those three colors) and stay out of the edges and depth; **Ink layer** adds `Scene ink` as lines on transparency; the regions entry uses the regional LLLite at 1.0 ending at 0.3. The S3 checks still pass.
+- **Real inference** with the Studio's `renderScene` (classroom, a standing teacher and a seated student, side camera), Any 0.7 on the edges with and without the regions at 1.0 to 0.3, seeds 11 and 12, Turbo and mangaVision: with the regions, the student sat at her figure and the teacher stood at hers at the scene's scale in 3 of 4 images (Turbo seed 12 moved the teacher to the right, as the prompt said); with edges only, the teacher came out larger and further right in all four.
+
 # Scene per drawing and in Panels — November 2, 2026
 
 - **Chromium `browser_scene.mjs`:** a saved drawing stores its scene and camera (Low front) in the asset; reopening it with **Draw with Klecks** starts the scene editor at that camera and lists the drawing under "Used by". In Panels, an Any control with **From scene…** and the Back corner camera renders the scene at the 1000×1000 output on **Generate panel**, stages it as `scene-<hash>.png` and queues it into `anima-lllite-any-test-like-v2`; the result keeps the scene control in its settings. `browser_generation_engines.mjs`, `browser_sketch.mjs`, `browser_inpaint.mjs`, `browser_pose.mjs` and `browser.mjs` still pass.

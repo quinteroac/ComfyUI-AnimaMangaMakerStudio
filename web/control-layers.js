@@ -58,15 +58,17 @@ export function controlLayers(studio, scope, send, dimensions, changed, scene = 
         if (!controlTypes[add.value]) return;
         const c = entry(add.value); add.value = ''; create(c.name); changed(); render();
     } }, el('option', { value: '', text: 'Add control layer…' }), ...Object.entries(controlTypes).map(([value, type]) => el('option', { value, text: type.label })));
-    // The scene's edges feed the Any LLLite and its depth the Depth LLLite, each in its own layer that a new render replaces.
+    // The scene's edges feed the Any LLLite, its depth the Depth LLLite and its figures the regional LLLite, each in its own layer that a new render replaces.
+    // The ink layer is ordinary drawing content.
     const build = button('Build scene…', () => studio.action(async () => {
         if (!dimensions()) throw new Error('Wait for the drawing to open before building a scene.');
         const result = await sceneEditor(studio, scene, dimensions()); if (!result) return;
         const { maps, ...choice } = result; scene = choice;
-        for (const [map, type, name] of [['edges', 'anytest', 'Control · Scene edges'], ['depth', 'depth', 'Control · Scene depth']]) {
+        for (const [map, type, name] of [['edges', 'anytest', 'Control · Scene edges'], ['depth', 'depth', 'Control · Scene depth'], ['regions', 'regional', 'Control · Scene regions']]) {
             if (!maps[map]) continue;
             const c = state.control_layers.find(c => c.name === name) || entry(type, name); c.enabled = true; create(name, maps[map]);
         }
+        if (maps.ink) create('Scene ink', maps.ink);
         changed(); render();
     }));
     element.append(field('Add control layer', add, 'Paint on the new layer, or fill it from an image; transparent parts become the background the control expects. Control layers are saved in the PSD but left out of the drawing sent to the model and of the PNG.'),

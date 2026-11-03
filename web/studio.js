@@ -9,7 +9,7 @@ import { combo, segmented, slider, toggle, seed, resizer, summarize } from './co
 import { StoryStudio } from './story.js';
 import { assistantSettings } from './assistant.js';
 import { openStylePicker } from './style-picker.js';
-import { sceneEditor, renderScene } from './scene-editor.js';
+import { sceneEditor, renderScene, sceneMap } from './scene-editor.js';
 import { upload } from './control-layers.js';
 
 const spaces = { story: 'Story', style: 'Style', references: 'References', panels: 'Panels', design: 'Page layout' };
@@ -411,7 +411,7 @@ export class Studio {
                     controlTypes[c.type] ? el('small', { text: `${controlTypes[c.type].label} · ${controlTypes[c.type].hint}` }) : null,
                     combo('Control model', options(this.defs, 'ModelPatchLoader', 'name'), c.patch, value => { c.patch = value; changed(); }),
                     el('div', { class: 'amm-row amm-control-image' }, asset ? el('img', { src: assetUrl(this.project.id, asset.id, true), alt: asset.name, class: 'amm-control-thumb' }) : null,
-                        el('small', { text: c.scene ? `Scene · ${scene ? `${scene.name} · ${c.scene.camera}` : 'deleted scene'} · ${c.type === 'depth' ? 'depth' : 'edges'}` : asset ? `${asset.name}${asset.deleted ? ' · Trash' : asset.missing ? ' · Missing file' : ''}` : 'No control image' }),
+                        el('small', { text: c.scene ? `Scene · ${scene ? `${scene.name} · ${c.scene.camera}` : 'deleted scene'} · ${sceneMap(c.type)}` : asset ? `${asset.name}${asset.deleted ? ' · Trash' : asset.missing ? ' · Missing file' : ''}` : 'No control image' }),
                         iconButton('Choose control image', 'image', () => this.chooseImage('Choose control image', ref => { c.image = ref; delete c.scene; changed(); refresh(); this.jobs(); return true; })),
                         // A scene camera is rendered at the output size on every generation, so edits to the scene reach the next panel.
                         button('From scene…', () => this.action(async () => {
@@ -858,7 +858,7 @@ export class Studio {
                 if (!control.scene) { control.image_path = staged.get(control.image); continue; }
                 const scene = project.workspace.scenes?.find(s => s.id === control.scene.scene);
                 if (!scene) throw new Error('The scene of a control was deleted. Choose another scene or image for it.');
-                const png = await (await fetch(await renderScene(scene, control.scene.camera, imageDimensions(cfg), control.type === 'depth' ? 'depth' : 'edges'))).blob();
+                const png = await (await fetch(await renderScene(scene, control.scene.camera, imageDimensions(cfg), sceneMap(control.type)))).blob();
                 // Named by content (FNV-1a): ComfyUI keeps one copy of an identical upload, and a queued job keeps the render it was given.
                 let hash = 0x811c9dc5; for (const byte of new Uint8Array(await png.arrayBuffer())) hash = Math.imul(hash ^ byte, 0x01000193) >>> 0;
                 control.image_path = await upload(png, project.id, `scene-${hash.toString(16)}`);

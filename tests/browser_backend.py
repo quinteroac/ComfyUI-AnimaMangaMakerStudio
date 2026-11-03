@@ -114,6 +114,8 @@ async def main():
                 else: fields[part.name] = await part.text()
             path = routes.contained(root / 'output', Path(fields.get('subfolder', '')) / filename)
             path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(content)
+            # ComfyUI stores any upload as is; Load3D models arrive here too.
+            if filename.endswith('.glb'): return web.json_response({'name': filename, 'subfolder': fields.get('subfolder', ''), 'type': fields.get('type', 'input')})
             with Image.open(io.BytesIO(content)) as image: width, height = image.size
             return web.json_response({'name': filename, 'subfolder': fields.get('subfolder', ''), 'type': 'temp', 'width': width, 'height': height})
         @instance.routes.get('/test/view')
