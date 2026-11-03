@@ -388,7 +388,7 @@ export function sketchControls(studio, kind, project, send, busyChanged) {
             previewImage?.close(); previewImage = image; canvas.width = Math.max(1, Math.min(320, Math.round(220 * dimensions.width / dimensions.height))); canvas.height = Math.max(1, Math.round(canvas.width * dimensions.height / dimensions.width));
             if (!cfg.region) cfg.region = { x: 0, y: 0, ...dimensions };
             for (const key of Object.keys(inputs)) inputs[key].value = cfg.region[key]; paintPreview(); if (mode === 'bbox') bbox.sync();
-            const names = (data.controls || []).map(item => item.name); layers.sync(names); inpaint.sync(names);
+            layers.sync(data.controls || []); inpaint.sync((data.controls || []).map(item => item.name));
             if (data.token === 'live') liveSnapshot?.resolve();
             else if (data.token !== 'preview') submit(data);
         } else if (data.type === 'manga-drawing-art-applied' && data.token === active?.token) {

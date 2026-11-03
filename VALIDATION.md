@@ -1,3 +1,9 @@
+# Pose mannequin and regions — November 2, 2026
+
+- **Chromium `browser_pose.mjs`** with the installed vnccs-utils: VNCCS Pose Studio loads inside the Studio dialog, **Apply to layer** fills the 3D pose layer with an 816×1224 render on black (83,512 lit pixels), the Pose Studio state is stored with the layer entry, and **From 3D pose** turns the mannequin into a flat red region. Headless Chromium cannot start Pose Studio's module worker in a cross-origin-isolated page, also outside the Studio, so the test page drops COEP/COOP; the user's ComfyUI serves COEP credentialless.
+- **Real inference:** the Pose Studio capture as the `anima_3dpose_6200` control on Turbo and mangaVision reproduced the A-pose with the mannequin's size and position, where the uncontrolled baselines raised the arms and changed the framing. The capture frame decides the shot.
+- `browser_inpaint.mjs` and `browser_sketch.mjs` still pass.
+
 # Drawing editor control layers and inpainting — November 2, 2026
 
 - **Real Turbo inference** with the Studio's own `buildPrompt` graph and the editor's area, mask widening and stitching reproduced on the benchmark source: inpaint (red sweater over the shirt, denoise 1.0) blended into the uniform; fix (denoise 0.5, a 343×353 crop generated at about 1 MP) redrew the collar and bow more cleanly with no visible seam; outpaint (256 px on the right) continued the classroom seamlessly, and also added a second girl because the prompt described the main character rather than the new area. About 4 s per generation.

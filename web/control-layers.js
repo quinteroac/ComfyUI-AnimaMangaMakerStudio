@@ -2,6 +2,7 @@ import { api } from '../../scripts/api.js';
 import { el, button, iconButton, field, assetUrl } from './client.js';
 import { controlTypes, options } from './prompts.js';
 import { combo, slider, toggle } from './controls.js';
+import { poseEditor, meshRegions, mannequinColors } from './pose-editor.js';
 
 export const maskLayer = 'Control · Mask';
 
@@ -9,7 +10,7 @@ export const maskLayer = 'Control · Mask';
 // the layers themselves live in the drawing's PSD, so a listed layer may be missing until it is added again.
 export function controlLayers(studio, scope, send, dimensions, changed) {
     const state = studio.state(scope); state.control_layers ||= [];
-    let present = new Set();
+    let present = new Set(), latest = [];
     const element = el('details', {}, el('summary', { text: 'Control layers' }));
     const rows = el('div');
     const create = (name, imageUrl) => {
@@ -25,10 +26,25 @@ export function controlLayers(studio, scope, send, dimensions, changed) {
                 el('small', { text: present.has(c.name) ? controlTypes[c.type]?.hint || '' : 'Layer not found in the drawing · add it again or rename a layer to this name.' }),
                 combo('Control model', options(studio.defs, 'ModelPatchLoader', 'name'), c.patch, value => { c.patch = value; changed(); }),
                 el('div', { class: 'amm-row' }, button('Fill from image', () => studio.chooseImage(`Fill ${c.name}`, id => { create(c.name, assetUrl(studio.project.id, id)); return true; })),
+                    c.type === 'pose3d' ? button('Pose mannequin', () => studio.action(async () => {
+                        const posed = await poseEditor(studio, c.pose_studio, dimensions()); if (!posed) return;
+                        c.pose_studio = posed.state; create(c.name, posed.image); changed();
+                    })) : null,
+                    c.type === 'regional' ? button('From 3D pose', () => studio.action(() => regionsFromPose(c))) : null,
                     present.has(c.name) ? null : button('Add layer', () => create(c.name))),
                 number('Strength', 'strength', [0, 2], 0.05), number('Start', 'start', [0, 1], 0.01), number('End', 'end', [0, 1], 0.01));
         }));
     };
+    // One flat region per mannequin, from the first 3D pose layer in the drawing.
+    async function regionsFromPose(target) {
+        const pose = state.control_layers.find(c => c.type === 'pose3d' && latest.some(item => item.name === c.name));
+        if (!pose) throw new Error('Add and pose a 3D pose control layer first.');
+        const bitmap = await createImageBitmap(latest.find(item => item.name === pose.name).png), canvas = document.createElement('canvas');
+        canvas.width = bitmap.width; canvas.height = bitmap.height; const ctx = canvas.getContext('2d'); ctx.drawImage(bitmap, 0, 0); bitmap.close();
+        const colors = pose.pose_studio?.characters?.map(character => character.color).filter(Boolean);
+        ctx.putImageData(meshRegions(ctx.getImageData(0, 0, canvas.width, canvas.height), colors?.length ? colors : mannequinColors), 0, 0);
+        create(target.name, canvas.toDataURL('image/png'));
+    }
     const add = el('select', { 'aria-label': 'Add control layer', onchange: () => {
         const type = controlTypes[add.value]; if (!type) return;
         let name = `Control · ${type.label}`;
@@ -41,8 +57,8 @@ export function controlLayers(studio, scope, send, dimensions, changed) {
     render();
     return {
         element,
-        // Layer names from the latest snapshot.
-        sync(names) { present = new Set(names); render(); },
+        // Control layers from the latest snapshot.
+        sync(controls) { latest = controls; present = new Set(controls.map(item => item.name)); render(); },
         // Crops each enabled control layer to the generation region, flattens it onto its background and stages it as a temporary input.
         async stage(snapshot, r, project, token) {
             const staged = [];

@@ -43,6 +43,7 @@ Managing projects, importing images, drawing with Klecks, editing pages and expo
 | Anima SnapRef | [SnapRef](https://huggingface.co/0ppxnhximxr/snapref-v1b) custom node (`SnapRef`). |
 | ControlNet-LLLite controls | Native `ModelPatchLoader` and `AnimaLLLiteApply`. With Anima Ref, [ComfyUI-Anima-CharRef-LLLite](https://github.com/quinteroac/ComfyUI-Anima-CharRef-LLLite) (`ExperimentalAnimaLLLiteRefApply`, `ExperimentalAnimaRefAdapterControlsLoader`), because the stock LLLite patch does not combine with the reference frame. |
 | Artist Mixer | [Anima-Artist-Mixer](https://github.com/An1X3R/Anima-Artist-Mixer): `AnimaArtistPack` and `AnimaArtistAdapterMixer`. |
+| Pose mannequin in the drawing editor | vnccs-utils with VNCCS Pose Studio (`PoseStudioWidget`), optional. Without it, fill a 3D pose layer from a render. |
 | Transparency · Chroma key | [ComfyUI_VNCCS](https://github.com/AHEKOT/ComfyUI_VNCCS): `VNCCSChromaKey`. |
 | Art to Manga Panel · Manga-Lite | [ComfyUI-MangaScreen](https://github.com/ashukae/ComfyUI-MangaScreen): `MangaLevels`, `MangaFinish` and `MangaPanel`. Requires `opencv-python` and `numpy`; no diffusion model is needed. |
 | Art to Manga Panel · Extract pen lines | [comfyui_controlnet_aux](https://github.com/Fannovel16/comfyui_controlnet_aux): `Manga2Anime_LineArt_Preprocessor` and its Manga Lineart weights. Optional and disabled initially. |

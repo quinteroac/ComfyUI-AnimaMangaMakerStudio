@@ -463,3 +463,6 @@
 .amm-style-previews figcaption{color:var(--amm-muted);font-size:12px;margin-top:4px}
 .amm-control-image{align-items:center}
 .amm-control-thumb{width:56px;height:56px;object-fit:contain;border-radius:var(--amm-radius-sm);background:var(--amm-raised)}
+.amm-pose-dialog{width:min(1280px,96vw);max-width:none}
+.amm-pose-stage{position:relative;height:min(70vh,760px);overflow:hidden;border-radius:var(--amm-radius-sm)}
+.amm-pose-stage>*{width:100%;height:100%}
