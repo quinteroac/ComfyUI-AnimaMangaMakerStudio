@@ -23,6 +23,10 @@ export async function request(path, body, method = 'GET') {
 export function assetUrl(project, asset, thumb = false) {
     return api.apiURL(`/anima-manga-maker/projects/${project}/assets/${asset}${thumb ? '?thumb=1' : ''}`);
 }
+export function inputUrl(path) {
+    const slash = path.lastIndexOf('/');
+    return api.apiURL('/view?' + new URLSearchParams({ filename: path.slice(slash + 1), subfolder: slash < 0 ? '' : path.slice(0, slash), type: 'input' }));
+}
 export function download(name, data) {
     const blob = data instanceof Blob ? data : new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);

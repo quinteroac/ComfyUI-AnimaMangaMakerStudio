@@ -42,6 +42,8 @@ Hover an image to show its checkbox; selecting images shows a bar with **Clear s
 
 ## Connected references
 
+**Choose references** and **Choose control image** open one picker for project images, ComfyUI's input folder and **Upload from computer**. An image from outside the project is imported into References and connected in the same step, so it keeps an id, versions and Trash like any other asset.
+
 **Connected visual references** marks deleted images as **Trash** and missing files as **Missing file**. **Restore reference** recovers a connected image from Trash without changing its position; **Remove** disconnects it. Generation errors identify the unavailable image instead of silently skipping it.
 
 ## Reusing prompts

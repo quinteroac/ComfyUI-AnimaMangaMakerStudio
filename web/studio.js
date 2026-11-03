@@ -1,5 +1,5 @@
 import { api } from '../../scripts/api.js';
-import { uuid, el, button, iconButton, field, request, assetUrl, download, chooseFile, sizeControls } from './client.js';
+import { uuid, el, button, iconButton, field, request, assetUrl, inputUrl, download, chooseFile, sizeControls } from './client.js';
 import { sizeSettings, sizeLabel } from './size.js';
 import { options, defaultAttention, alphaMethods, referenceLimits, controlTypes, initialSettings, buildPrompt, composePrompt, promptSections, referencePrompt, parsePrompt, referencePresets, textGeneratorDefaults, textInstruction } from './prompts.js';
 import { newPage, normalizePage, PageEditor } from './editor.js';
@@ -405,12 +405,7 @@ export class Studio {
                     combo('Control model', options(this.defs, 'ModelPatchLoader', 'name'), c.patch, value => { c.patch = value; changed(); }),
                     el('div', { class: 'amm-row amm-control-image' }, asset ? el('img', { src: assetUrl(this.project.id, asset.id, true), alt: asset.name, class: 'amm-control-thumb' }) : null,
                         el('small', { text: asset ? `${asset.name}${asset.deleted ? ' · Trash' : asset.missing ? ' · Missing file' : ''}` : 'No control image' }),
-                        iconButton('Choose control image', 'image', () => {
-                            const picker = el('div', { class: 'amm-asset-picker' }, ...this.project.assets.filter(a => !a.deleted && !a.missing).map(a => this.assetPickerItem(a, () => {
-                                c.image = a.id; changed(); refresh(); this.jobs(); dialog.close();
-                            })));
-                            const dialog = this.modal('Choose control image', picker);
-                        })),
+                        iconButton('Choose control image', 'image', () => this.chooseImage('Choose control image', ref => { c.image = ref; changed(); refresh(); this.jobs(); return true; }))),
                     number('Control strength', 'strength', [0, 2], 0.05), number('Start · fraction of denoising', 'start', [0, 1], 0.01), number('End · fraction of denoising', 'end', [0, 1], 0.01));
             }));
         };
@@ -555,19 +550,47 @@ export class Studio {
                 return card;
             }));
         }; refresh(); this.referenceRefresh.set(space, refresh);
-        box.append(list, iconButton('Choose references', 'link', () => {
-            const items = this.project.assets.filter(a => !a.deleted && !a.missing);
-            const picker = el('div', { class: 'amm-asset-picker' });
-            const update = () => { for (const b of picker.children) b.disabled = cfg.references.length >= limit && !cfg.references.includes(b.dataset.assetId); };
-            picker.append(...items.map(a => this.assetPickerItem(a, () => {
-                if (!cfg.references.includes(a.id) && cfg.references.length < limit) { cfg.references.push(a.id); this.presetChanged(space); }
-                refresh(); update(); this.jobs();
-            }))); update(); this.modal('Connect references', picker);
-        }, {}, true));
+        box.append(list, iconButton('Choose references', 'link', () => this.chooseImage('Connect references', ref => {
+            if (!cfg.references.includes(ref) && cfg.references.length < limit) { cfg.references.push(ref); this.presetChanged(space); }
+            refresh(); this.jobs(); return false;
+        }, ref => cfg.references.length >= limit && !cfg.references.includes(ref)), {}, true));
         box.append(el('small', { text: cfg.engine === 'anima_ref'
             ? 'Anima Ref: connect one to four references; they are placed side by side as one reference. Character and style come from them, so describe only the scene, pose and framing in the prompt.'
             : 'SnapRef: connect one to three pictures of the same character. Character mode keeps the style from the model and prompt; Character & style also takes the art style.' }));
         slot.append(box);
+    }
+    // Picks a project image, or imports one from ComfyUI's input folder or the computer into References and picks it in the same step.
+    // `pick` gets the asset id and returns true to close the picker; `disabled` greys out images that cannot be added.
+    chooseImage(title, pick, disabled = () => false) {
+        const choose = id => { if (pick(id)) dialog.close(); else update(); };
+        const project = el('div', { class: 'amm-asset-picker' });
+        const renderProject = () => project.replaceChildren(...this.project.assets.filter(a => !a.deleted && !a.missing).map(a => this.assetPickerItem(a, () => choose(a.id))));
+        const importImage = async (blob, filename) => {
+            const form = new FormData(); form.append('image', blob, filename); form.append('kind', 'references'); form.append('name', filename.split('/').at(-1).replace(/\.[^.]+$/, ''));
+            const projectId = this.project.id, asset = await request(`/projects/${projectId}/import`, form, 'POST');
+            if (this.project.id !== projectId) return;
+            this.project.assets.push(asset); this.galleryRefresh.forEach(render => render()); renderProject(); choose(asset.id);
+        };
+        const inputs = el('div', { class: 'amm-asset-picker' }), search = el('input', { type: 'search', placeholder: 'Search ComfyUI input images…', 'aria-label': 'Search ComfyUI input images' });
+        const files = options(this.defs, 'LoadImage', 'image');
+        const renderInputs = () => {
+            const term = search.value.toLowerCase(), matches = files.filter(name => name.toLowerCase().includes(term));
+            inputs.replaceChildren(...matches.slice(0, 120).map(name => {
+                const b = button('', () => this.action(async () => {
+                    const response = await fetch(inputUrl(name)); if (!response.ok) throw new Error(`Could not read ${name} from ComfyUI's input folder.`);
+                    await importImage(await response.blob(), name);
+                }), { 'data-input': name });
+                b.append(el('img', { src: inputUrl(name), alt: name, loading: 'lazy' }), el('span', { text: name })); return b;
+            }), ...matches.length > 120 ? [el('small', { text: `${matches.length - 120} more · refine the search` })] : []);
+        };
+        const update = () => { for (const b of project.children) b.disabled = disabled(b.dataset.assetId); for (const b of inputs.querySelectorAll('button')) b.disabled = disabled(null); upload.disabled = disabled(null); };
+        search.oninput = () => { renderInputs(); update(); };
+        const upload = iconButton('Upload from computer', 'upload', () => chooseFile('image/*', files => this.action(async () => {
+            for (const file of files) { if (!dialog.open) return; await importImage(file, file.name); }
+        }), true), {}, true);
+        const dialog = this.modal(title, el('div', {}, el('div', { class: 'amm-row' }, upload, el('small', { text: 'Images from the computer or ComfyUI\'s input folder are added to References and connected in one step.' })),
+            el('h3', { text: 'Project' }), project, el('h3', { text: 'ComfyUI input' }), search, inputs));
+        renderProject(); renderInputs(); update();
     }
     assetPickerItem(a, action) { const b = button('', action, { 'data-asset-id': a.id }); b.append(el('img', { src: assetUrl(this.project.id, a.id, true), alt: a.name, loading: 'lazy' }), el('span', { text: `${a.name} · ${a.kind}` })); return b; }
     controlLayout(view, controls, space) {
@@ -808,7 +831,7 @@ export class Studio {
             const references = textTask ? operation === 'describe' ? [assetId] : [] : referenceLimits[engine] ? cfg.references : [];
             // Control images are staged with the references; a control without an image is skipped.
             const controls = !textTask && ['references', 'panels'].includes(operation) ? (cfg.controls || []).filter(c => c.enabled && c.image) : [];
-            const ids = [...references, ...controls.map(c => c.image)];
+            const ids = [...new Set([...references, ...controls.map(c => c.image)])];
             const unavailable = ids.find(id => !project.assets.some(a => a.id === id && !a.missing && !a.deleted));
             if (unavailable) {
                 const asset = project.assets.find(a => a.id === unavailable);
@@ -817,8 +840,9 @@ export class Studio {
             }
             if (!textTask && references.length && cfg.size_mode !== 'manual') Object.assign(cfg, sizeSettings(project.assets.find(a => a.id === references[0])), { size_mode: 'original' });
             const paths = await request(`/projects/${project.id}/stage`, { assets: ids }, 'POST');
-            controls.forEach((control, i) => control.image_path = paths[references.length + i]);
-            jobId = uuid(); const built = buildPrompt(this.defs, operation, engine, cfg, paths.slice(0, references.length), jobId);
+            const staged = new Map(ids.map((id, i) => [id, paths[i]]));
+            controls.forEach(control => control.image_path = staged.get(control.image));
+            jobId = uuid(); const built = buildPrompt(this.defs, operation, engine, cfg, references.map(id => staged.get(id)), jobId);
             const kind = textTask || operation === 'references' ? 'references' : 'panels';
             const job = { id: jobId, operation, engine, kind, settings: cfg, prompt: built.graph, output_node: built.outputNode, parent: null, sources: ids,
                 ...(textTask ? { space, target_engine: state.engine, section } : {}),

@@ -103,6 +103,37 @@ try {
         await view.getByLabel('Engine', { exact: true }).selectOption('anima_snapref');
         await view.getByText('Connected visual references', { exact: true }).waitFor();
         assert.equal(await view.locator('.amm-run-hint').innerText(), 'Connect one to three references.');
+        if (space === 'panels') {
+            // Images from the computer or ComfyUI's input folder join References and get connected in one step.
+            const png = Buffer.from((await page.evaluate(() => { const c = document.createElement('canvas'); c.width = 64; c.height = 96; c.getContext('2d').fillRect(0, 0, 64, 96); return c.toDataURL('image/png'); })).split(',')[1], 'base64');
+            const inputName = await page.evaluate(async () => (await (await fetch('/object_info/LoadImage')).json()).LoadImage.input.required.image[0].find(name => /\.(png|jpe?g|webp)$/i.test(name)));
+            const projectBefore = (await (await fetch(`${backend.url}/anima-manga-maker/projects/${backend.project}`)).json()).assets.length;
+            await view.getByRole('button', { name: 'Choose references', exact: true }).click();
+            const picker = studio.getByRole('dialog', { name: 'Connect references', exact: true });
+            const [chooser] = await Promise.all([page.waitForEvent('filechooser'), picker.getByRole('button', { name: 'Upload from computer', exact: true }).click()]);
+            await chooser.setFiles({ name: 'outside.png', mimeType: 'image/png', buffer: png });
+            await view.locator('.amm-reference-strip > [data-asset-id]').filter({ hasText: 'outside' }).waitFor();
+            await picker.getByLabel('Search ComfyUI input images', { exact: true }).fill(inputName);
+            await picker.locator(`.amm-asset-picker > button[data-input="${inputName}"]`).click();
+            await view.locator('.amm-reference-strip > [data-asset-id]').nth(1).waitFor();
+            await picker.getByRole('button', { name: 'Close', exact: true }).click();
+            const imported = (await (await fetch(`${backend.url}/anima-manga-maker/projects/${backend.project}`)).json()).assets;
+            assert.equal(imported.length, projectBefore + 2, 'Both outside images joined the project');
+            assert.deepEqual(await view.locator('.amm-reference-strip > [data-asset-id]').evaluateAll(cards => cards.map(c => c.dataset.assetId)), imported.slice(-2).map(a => a.id));
+            assert(imported.slice(-2).every(a => a.kind === 'references'));
+            await page.waitForFunction(() => document.querySelector('.amm-panels [aria-label="Resolution · MP"]')?.disabled);
+            const queuedBefore = queued.length;
+            await view.getByRole('button', { name: 'Generate panel', exact: true }).click();
+            for (let i = 0; i < 40 && queued.length === queuedBefore; i++) await page.waitForTimeout(100);
+            const graph = queued.at(-1).prompt, snap = Object.values(graph).find(n => n.class_type === 'SnapRef');
+            assert(snap, await studio.locator('.amm-error').textContent());
+            assert.deepEqual([graph[snap.inputs.image[0]].inputs.image, graph[snap.inputs.image_2[0]].inputs.image], imported.slice(-2).map(a => `anima-manga-maker/${backend.project}/${a.id}.png`));
+            const latent = Object.values(graph).find(n => n.class_type === 'EmptyLatentImage').inputs;
+            assert(Math.abs(latent.width / latent.height - 2 / 3) < 0.02, 'The size is inherited from the uploaded first reference');
+            await page.waitForTimeout(700);
+            assert.equal((await (await fetch(`${backend.url}/anima-manga-maker/projects/${backend.project}`)).json()).assets.length, projectBefore + 3);
+            await page.waitForTimeout(1500);
+        }
         // Anima Ref takes character and style from connected references, so it waits for at least one.
         await view.getByLabel('Engine', { exact: true }).selectOption('anima_ref');
         await view.getByText('Connected visual references', { exact: true }).waitFor();
