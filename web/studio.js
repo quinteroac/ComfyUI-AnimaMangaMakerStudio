@@ -11,6 +11,7 @@ import { assistantSettings } from './assistant.js';
 import { openStylePicker } from './style-picker.js';
 import { sceneEditor, renderScene, sceneMap } from './scene-editor.js';
 import { upload } from './control-layers.js';
+import { tagSliderControls } from './tag-sliders.js';
 
 const spaces = { story: 'Story', style: 'Style', references: 'References', panels: 'Panels', design: 'Page layout' };
 const engines = { anima: 'Anima', anima_ref: 'Anima Ref', anima_snapref: 'Anima SnapRef' };
@@ -205,13 +206,17 @@ export class Studio {
         }; renderText();
         const engineSelect = el('select', { 'aria-label': 'Global model engine' }, ...Object.entries(engines).map(([value, text]) => el('option', { value, text })));
         if (this.project && engines[this.state().engine]) engineSelect.value = this.state().engine;
+        const sharedModel = el('div');
         const controls = el('div'); const render = () => {
+            sharedModel.replaceChildren(combo('Global diffusion model', options(this.defs, 'UNETLoader', 'unet_name'), value.models.anima.model, model => {
+                value.models.anima.model = model; globalModels(value); render();
+            }, 'Used by every operation in Anima, Anima Ref and SnapRef, including saved projects and presets.'));
             controls.replaceChildren(); const engine = engineSelect.value;
             this.modelControls(controls, value.models[engine], engine, () => {}, true, 'references', render);
         };
         engineSelect.onchange = render; render();
         this.globalModelRender = render;
-        const models = el('div', {}, el('small', { text: 'One model configuration per engine, shared across references, panels, style previews and the drawing editor. Individual fields and presets override only the values they define.' }), field('Global model engine', engineSelect), controls);
+        const models = el('div', {}, el('small', { text: 'One diffusion model for all engines. Encoder, VAE, sampling and adapter options can be configured below for each engine.' }), sharedModel, field('Engine options', engineSelect), controls);
         const transfer = el('div', { class: 'amm-button-grid' }, button('Export global settings', () => download('anima-manga-maker-config.json', value)), button('Import global settings', () => chooseFile('.json', files => this.action(async () => {
                 const imported = JSON.parse(await files[0].text()); if (!imported.presets || (!imported.models && !imported.defaults)) throw new Error('Invalid settings file');
                 value.defaults = imported.defaults || {}; value.models = imported.models || {}; globalModels(value); value.presets = imported.presets; Object.assign(text, textGeneratorDefaults, imported.text_generator || {}); renderText(); render();
@@ -227,6 +232,7 @@ export class Studio {
         const dialog = this.modal('Global settings', form, button('Refresh models and nodes', () => this.action(async () => { this.defs = await api.getNodeDefs(); renderText(); render(); })),
             button('Save global settings', () => this.action(async () => { let savedBeforeMove = true;
                 try { await this.flush(); } catch (error) { if (value.root === this.settings.root) throw error; savedBeforeMove = false; }
+                globalModels(value);
                 this.settings = await request('/settings', value, 'POST'); this.projects = await request('/projects');
                 if (!this.projects.some(p => p.id === this.project?.id)) {
                     if (this.project && !savedBeforeMove) throw new Error('The new root folder does not contain the active project. Changes remain in memory; select the folder containing the relocated project.');
@@ -241,9 +247,9 @@ export class Studio {
         const describe = () => summarize(technical, cfg.model?.split(/[\\/]/).at(-1) || 'No model');
         const set = key => value => { cfg[key] = value; if (!expanded) (cfg.model_overrides ||= {})[key] = value; describe(); changed(); };
         describe();
-        if (!expanded) technical.append(el('small', { text: 'Empty model fields inherit the global engine configuration. Changes here affect only this operation.' }));
+        if (!expanded) technical.append(el('small', { text: 'The diffusion model always follows Settings → Models. Other changes here affect only this operation.' }));
         const encoderType = combo('Encoder loading type', options(this.defs, 'CLIPLoader', 'type'), cfg.encoder_type, set('encoder_type'));
-        technical.append(combo('Diffusion model', options(this.defs, 'UNETLoader', 'unet_name'), cfg.model, set('model')),
+        technical.append(field('Diffusion model · global', el('input', { value: cfg.model || '', readOnly: true })),
             combo('Text encoder', options(this.defs, 'CLIPLoader', 'clip_name'), cfg.encoder, set('encoder')),
             encoderType,
             combo('VAE', options(this.defs, 'VAELoader', 'vae_name'), cfg.vae, set('vae')));
@@ -272,17 +278,22 @@ export class Studio {
             globalModels(this.settings); cfg.model_overrides = {}; inheritModels(cfg, this.settings.models[engine], engine);
             changed(); restoreView();
         })));
-        if (space !== 'sketch') technical.append(button('Use default models and sampling', () => this.action(async () => { await this.useDefaultModels(engine); this.resetViews(); this.switch(this.active); })));
+        if (space !== 'sketch') technical.append(button('Reset engine options and sampling', () => this.action(async () => { await this.useDefaultModels(engine); this.resetViews(); this.switch(this.active); })));
         host.append(technical);
         if (!expanded) this.loraControls(host, cfg, changed, this.project.presets, `${space}:${engine}`);
         if (expanded) this.samplingControls(host, cfg, engine, changed, space, true);
     }
     async useDefaultModels(engine) {
         const settings = await request('/settings'); globalModels(settings);
-        Object.assign(settings.models[engine], clone(profiles[engine].settings));
+        Object.assign(settings.models[engine], clone(profiles[engine].settings), { model: settings.models.anima.model });
+        globalModels(settings);
         this.settings = await request('/settings', settings, 'POST'); this.defs = await api.getNodeDefs();
-        if (this.globalDraft) { this.globalDraft.models[engine] = clone(this.settings.models[engine]); this.globalModelRender(); }
-        this.notify(`${engines[engine]} · Default models and sampling applied globally`);
+        if (this.globalDraft) {
+            const model = this.globalDraft.models.anima.model;
+            this.globalDraft.models[engine] = { ...clone(this.settings.models[engine]), model };
+            globalModels(this.globalDraft); this.globalModelRender();
+        }
+        this.notify(`${engines[engine]} · Engine options and sampling reset`);
     }
     loraControls(host, cfg, changed, presetStore = this.project.presets, scope = `${this.active}:${cfg.engine}`) {
         cfg.loras ||= [];
@@ -496,6 +507,7 @@ export class Studio {
             showStyle(); clearTimeout(previewTimer); filled(); changed();
         }, { class: 'amm-icon-button amm-prompt-clear', title: 'Clear TASK, all sections, and the free prompt' }));
         showStyle(); filled(); host.append(group, field('Free prompt', enhanceField(free, 'free', 'free prompt')), combined);
+        tagSliderControls(host, cfg, changed, !!this.defs.AnimaTagSliders);
     }
     downloadImageAction(asset) {
         return iconButton('Download image', 'download', () => {

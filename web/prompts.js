@@ -291,6 +291,13 @@ export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) 
             strength: Number(config.artist_strength ?? 1), normalize_weights: true, alignment_mode: 'base_anchored', enabled: true, apply_to_uncond: false, uncond_strength: 0 });
         model = mixer; positive = [mixer[0], 1];
     } else positive = add('CLIPTextEncode', { clip, text });
+    const tags = config.tag_sliders;
+    if (tags?.enabled && tags.tags?.trim()) {
+        const mode = tags.mode || 'weight_norm';
+        model = add('AnimaTagSliders', { model, clip, tags: tags.tags, slider_values: JSON.stringify(tags.values || {}), mode, bypass: false,
+            ...(mode === 'guidance' ? { 'mode.start_percent': Number(tags.start_percent ?? 0), 'mode.end_percent': Number(tags.end_percent ?? 1),
+                'mode.rescale': Number(tags.rescale ?? 0), 'mode.anchor': !!tags.anchor } : {}) });
+    }
     const negative = add('CLIPTextEncode', { clip, text: config.negative });
     let sampled;
     if (engine === 'anima_ref') {

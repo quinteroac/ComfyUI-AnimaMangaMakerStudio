@@ -2,7 +2,7 @@
 
 [Documentation](README.md) · [Project README](../README.md)
 
-Configure each engine globally, then override individual fields only when an operation needs a different model or sampling setup. Project content, operation settings and global model settings have different lifetimes.
+Select one **Global diffusion model** in **Settings → Models** for Anima, Anima Ref and SnapRef. Saving it applies the model to every operation, including existing projects and presets. Encoder, VAE, sampling and adapter settings remain configurable per engine and operation. Project content, operation settings and global model settings have different lifetimes.
 
 An agent can also apply and verify these settings using the included [anima-manga-maker-setup skill](agent-setup.md), with access to your ComfyUI environment.
 
@@ -10,8 +10,8 @@ An agent can also apply and verify these settings using the included [anima-mang
 
 | Scope | What belongs here | When to use it |
 | --- | --- | --- |
-| **Settings → Models** | Model, text encoder, encoder type, VAE and default sampling for **Anima** or **Anima Ref** | A shared starting configuration across workspaces and projects |
-| **Models and advanced settings** in an operation | Explicit model and sampling overrides and adapter options | A particular reference, panel, style preview or drawing workflow |
+| **Settings → Models** | One diffusion model for all engines; text encoder, VAE and default sampling per engine | A shared starting configuration across workspaces and projects |
+| **Models and advanced settings** in an operation | Encoder, VAE and sampling overrides and adapter options | A particular reference, panel, style preview or drawing workflow |
 | **Prompt and settings preset** | Reusable prompt sections and operation settings, including explicit overrides | Returning to a known creative setup without replacing global defaults |
 | **Settings → Text generator** | Encoder, loading type, device and output length for text/vision tasks | Prompt enhancement, image descriptions and dialogue |
 
@@ -23,9 +23,9 @@ An agent can also apply and verify these settings using the included [anima-mang
 | **Anima Ref** | Follows the CharRef workflows: references stitched side by side into one image, `AnimaRefAdapterLoader` (v2 r64), `AnimaRefLatent`, `AnimaRefGuider` and optional Safe PAG | Anima Turbo, 8 steps, CFG 1, Euler, Simple, reference guidance 1, PAG 1.3 |
 | **Anima SnapRef** | One to three pictures of one character on the `SnapRef` node, then `KSampler`. **Character** keeps the style from the model and prompt; **Character & style** also takes the art style | Anima Turbo, 8 steps, CFG 1, Euler, Simple, `snapref_v2a_pre2`, Character, attention 0, fidelity 1 |
 
-All three use `qwen_3_06b_base.safetensors` with loading type `stable_diffusion` and `qwen_image_vae.safetensors`. These defaults are written in `web/models.js`; every field stays editable. **Use default models and sampling**, under **Models and advanced settings** or in global settings, restores them for that engine. A different Anima checkpoint, such as Anima Base or a manga finetune, usually needs more steps and a higher CFG; set them together with the model.
+All three use `qwen_3_06b_base.safetensors` with loading type `stable_diffusion` and `qwen_image_vae.safetensors`. These defaults are written in `web/models.js`; **Reset engine options and sampling** restores the engine defaults while keeping the selected global diffusion model. A different Anima checkpoint, such as Anima Base or a manga finetune, usually needs more steps and a higher CFG; set them together with the model.
 
-Fields changed in an operation override only that value. **Use global model configuration** clears these individual overrides. Presets store explicit overrides: missing, empty or null model fields inherit the current global value. A preset with explicit values keeps them even when the global configuration changes.
+The diffusion model is always inherited; older model selections in operations and presets no longer override it. Other fields changed in an operation override only that value. **Use global model configuration** clears these individual overrides. Presets store explicit overrides: missing, empty or null model fields inherit the current global value. Explicit encoder, VAE and sampling values in a preset remain unchanged when global defaults change.
 
 The model chain is: LoRAs, LLLite controls, the reference adapter (Anima Ref or SnapRef), then attention, Safe PAG and the Artist Mixer. LoRAs are applied to the model only (`LoraLoaderModelOnly`), in list order. **LoRA presets** save and load a LoRA list per operation.
 

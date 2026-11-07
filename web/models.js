@@ -17,8 +17,9 @@ export const profiles = {
 
 export function globalModels(settings) {
     settings.models ||= {};
+    const model = settings.models.anima?.model ?? animaModels.model;
     for (const [engine, profile] of Object.entries(profiles)) {
-        settings.models[engine] = { ...modelValues(initialSettings(engine)), ...profile.settings, ...settings.models[engine], engine };
+        settings.models[engine] = { ...modelValues(initialSettings(engine)), ...profile.settings, ...settings.models[engine], model, engine };
     }
 }
 
@@ -30,6 +31,7 @@ export function inheritModels(config, global, engine) {
             for (const [key, value] of Object.entries(modelValues(config))) if (value !== base[key]) config.model_overrides[key] = value;
         }
     }
+    delete config.model_overrides.model;
     for (const key of modelFields) config[key] = defined(config.model_overrides[key]) ? config.model_overrides[key] : base[key];
     return config;
 }

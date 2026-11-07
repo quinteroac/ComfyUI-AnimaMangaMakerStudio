@@ -18,12 +18,35 @@ assert.equal(config.vae, 'global-new-vae.safetensors'); assert.equal(config.enco
 applyPreset(config, { prompt_sections: { subject: 'Preset subject.' } }); inheritModels(config, settings.models.anima, 'anima');
 assert.equal(config.encoder, settings.models.anima.encoder); assert.equal(config.prompt, 'Keep this prompt.'); assert.deepEqual(config.references, ['one']);
 applyPreset(config, { model: 'preset-model.safetensors', encoder: '', vae: null, steps: 0, cfg: 0 }); inheritModels(config, settings.models.anima, 'anima');
-assert.equal(config.model, 'preset-model.safetensors'); assert.equal(config.encoder, settings.models.anima.encoder); assert.equal(config.vae, 'global-new-vae.safetensors'); assert.equal(config.steps, 0); assert.equal(config.cfg, 0);
-const saved = savedPreset(config); assert.equal(saved.model, undefined); assert.equal(saved.model_overrides.model, 'preset-model.safetensors');
-applyPreset(config, saved); inheritModels(config, settings.models.anima, 'anima'); assert.equal(config.model, 'preset-model.safetensors');
+assert.equal(config.model, settings.models.anima.model); assert.equal(config.encoder, settings.models.anima.encoder); assert.equal(config.vae, 'global-new-vae.safetensors'); assert.equal(config.steps, 0); assert.equal(config.cfg, 0);
+const saved = savedPreset(config); assert.equal(saved.model, undefined); assert.equal(saved.model_overrides.model, undefined);
+applyPreset(config, saved); inheritModels(config, settings.models.anima, 'anima'); assert.equal(config.model, settings.models.anima.model);
 settings.models.anima.encoder = 'updated-global-encoder'; inheritModels(config, settings.models.anima, 'anima'); assert.equal(config.encoder, 'updated-global-encoder');
 applyPreset(config, 'Prompt only'); inheritModels(config, settings.models.anima, 'anima'); assert.equal(config.model, settings.models.anima.model);
 const refConfig = { references: [] }; inheritModels(refConfig, settings.models.anima_ref, 'anima_ref');
 applyPreset(refConfig, { pag_scale: 0 }); inheritModels(refConfig, settings.models.anima_ref, 'anima_ref'); assert.equal(refConfig.pag_scale, 0);
 applyPreset(refConfig, { pag_scale: '' }); inheritModels(refConfig, settings.models.anima_ref, 'anima_ref'); assert.equal(refConfig.pag_scale, 1.3);
 console.log('Anima Turbo defaults, stored global models, live field inheritance, partial/empty presets and snapshots passed.');
+
+// Existing engine choices and operation/preset overrides must not pin the diffusion model.
+const shared = { models: { anima: { model: 'global-a' }, anima_ref: { model: 'old-ref', ref_guidance: 2 }, anima_snapref: { model: 'old-snap' } } };
+globalModels(shared);
+for (const engine of Object.keys(profiles)) {
+    for (const space of ['references', 'panels', 'style', 'sketch', 'inpaint', 'redraw', 'bbox', 'upscale']) {
+        const legacy = { model: 'old-local', model_overrides: { model: 'old-override', steps: 23 }, prompt: space };
+        inheritModels(legacy, shared.models[engine], engine);
+        assert.equal(legacy.model, 'global-a'); assert.equal(legacy.model_overrides.model, undefined); assert.equal(legacy.steps, 23);
+        shared.models.anima.model = 'global-b'; globalModels(shared);
+        inheritModels(legacy, shared.models[engine], engine);
+        assert.equal(legacy.model, 'global-b'); assert.equal(legacy.prompt, space);
+        shared.models.anima.model = 'global-a'; globalModels(shared);
+    }
+}
+assert.equal(shared.models.anima_ref.ref_guidance, 2);
+console.log('Single global diffusion model propagates across all engines and operations, replacing old model overrides.');
+
+const oldConfig = { model: 'old-project-model', encoder: 'custom-encoder' };
+inheritModels(oldConfig, shared.models.anima, 'anima');
+assert.equal(oldConfig.model, 'global-a'); assert.equal(oldConfig.encoder, 'custom-encoder');
+const reopened = JSON.parse(JSON.stringify(shared)); globalModels(reopened);
+assert(Object.values(reopened.models).every(value => value.model === 'global-a'));

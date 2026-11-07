@@ -259,5 +259,32 @@ assert.equal(composePrompt({ prompt_sections: { lighting: '  ' }, prompt: '  fre
 assert.equal(composePrompt({ prompt_sections: {}, prompt: '' }), '');
 assert.throws(() => buildPrompt({}, 'panels', 'anima', configFor('anima'), [], crypto.randomUUID()), /Missing node/);
 
+for (const engine of ['anima', 'anima_ref', 'anima_snapref']) {
+    for (const mode of ['weight', 'weight_norm', 'attention', 'guidance']) {
+        const tags = { enabled: true, tags: 'big eyes#4\nfrom below | from above\nchibi | petite | tall',
+            values: { 'big eyes#4': mode === 'guidance' ? -2 : 2, 'from below | from above': -0.5, 'chibi | petite | tall': 1.5 },
+            mode, start_percent: 0.35, end_percent: 0.9, rescale: 0.2, anchor: true };
+        const cfg = configFor(engine, { tag_sliders: tags });
+        const images = engine === 'anima' ? [] : ['reference.png'];
+        const built = buildPrompt(defs, 'panels', engine, cfg, images, 'tag-sliders');
+        const [id, node] = Object.entries(built.graph).find(([, n]) => n.class_type === 'AnimaTagSliders');
+        assert.equal(node.inputs.tags, tags.tags); assert.deepEqual(JSON.parse(node.inputs.slider_values), tags.values);
+        assert.equal(node.inputs.mode, mode); assert.equal(node.inputs.bypass, false);
+        assert.equal(built.graph[node.inputs.clip[0]].class_type, 'CLIPLoader');
+        const consumer = Object.values(built.graph).find(n => n.class_type === (engine === 'anima_ref' ? 'AnimaRefGuider' : 'KSampler'));
+        assert.deepEqual(consumer.inputs.model, [id, 0]);
+        assert.equal(node.inputs['mode.start_percent'], mode === 'guidance' ? 0.35 : undefined);
+        if (mode === 'guidance') {
+            assert.equal(node.inputs['mode.end_percent'], 0.9); assert.equal(node.inputs['mode.rescale'], 0.2); assert.equal(node.inputs['mode.anchor'], true);
+        }
+        jobs.push({ engine, op: 'panels', count: images.length, ...built });
+        const missing = { ...defs }; delete missing.AnimaTagSliders;
+        assert.throws(() => buildPrompt(missing, 'panels', engine, cfg, images, 'missing'), /Missing node AnimaTagSliders/);
+        cfg.tag_sliders.enabled = false;
+        const bypassed = buildPrompt(missing, 'panels', engine, cfg, images, 'bypass');
+        assert(!Object.values(bypassed.graph).some(n => n.class_type === 'AnimaTagSliders'));
+    }
+}
+
 if (process.argv[3]) fs.writeFileSync(process.argv[3], JSON.stringify(jobs));
 console.log(`${jobs.length} Anima graphs passed: Turbo sampling, negative prompt, LoRA order, Anima Ref stitching and PAG, SnapRef pictures, LLLite controls per engine, Artist Mixer, sketch latent, bbox layout prompts, chroma key, style previews and text tasks.`);
