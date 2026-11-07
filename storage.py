@@ -50,7 +50,7 @@ class ProjectStore:
     def settings(self):
         if self.settings_path.exists():
             return json.loads(self.settings_path.read_text('utf-8'))
-        return {'root': str(self.default_root), 'defaults': {}, 'models': {}, 'presets': {}, 'text_generator': {}, 'assistant': {}}
+        return {'root': str(self.default_root), 'defaults': {}, 'models': {}, 'loras': [], 'presets': {}, 'text_generator': {}, 'assistant': {}}
 
     def fonts(self):
         return sorted([json.loads(contained(self.font_directory, path.name).read_text('utf-8')) for path in self.font_directory.glob('*.json')], key=lambda font: font['name'].casefold())
@@ -83,6 +83,7 @@ class ProjectStore:
             root.mkdir(parents=True, exist_ok=True)
             value = {'root': str(root.resolve()), 'defaults': data.get('defaults', previous['defaults']),
                      'models': data.get('models', previous.get('models', {})),
+                     'loras': data.get('loras', previous.get('loras', [])),
                      'presets': data.get('presets', previous['presets']),
                      'text_generator': data.get('text_generator', previous.get('text_generator', {})),
                      'assistant': data.get('assistant', previous.get('assistant', {}))}

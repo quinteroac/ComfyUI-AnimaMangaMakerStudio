@@ -36,6 +36,12 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(reopened.settings()['text_generator'], generator)
         self.assertNotIn('text_generator', reopened.read(self.project['id'])['config'])
 
+    def test_global_loras(self):
+        loras = [{'enabled': True, 'name': 'anima/turbo.safetensors', 'model': 1}]
+        self.store.configure({'loras': loras})
+        self.store.configure({'defaults': {}})
+        self.assertEqual(module.ProjectStore(self.directory / 'settings.json', self.directory / 'unused').settings()['loras'], loras)
+
     def test_reopen_versions_duplicate_relocate_and_isolation(self):
         first = self.store.import_image(self.project['id'], 'panels', png(), 'A')
         second = self.store.import_image(self.project['id'], 'panels', png('blue'), 'B', parent=first['id'])

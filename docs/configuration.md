@@ -27,7 +27,7 @@ All three use `qwen_3_06b_base.safetensors` with loading type `stable_diffusion`
 
 The diffusion model is always inherited; older model selections in operations and presets no longer override it. Other fields changed in an operation override only that value. **Use global model configuration** clears these individual overrides. Presets store explicit overrides: missing, empty or null model fields inherit the current global value. Explicit encoder, VAE and sampling values in a preset remain unchanged when global defaults change.
 
-The model chain is: LoRAs, LLLite controls, the reference adapter (Anima Ref or SnapRef), then attention, Safe PAG and the Artist Mixer. LoRAs are applied to the model only (`LoraLoaderModelOnly`), in list order. **LoRA presets** save and load a LoRA list per operation.
+The model chain is: LoRAs, LLLite controls, the reference adapter (Anima Ref or SnapRef), then attention, Safe PAG and the Artist Mixer. LoRAs are applied to the model only (`LoraLoaderModelOnly`), in list order: **Global LoRAs** from Settings → Models (every operation in every project), then the project style LoRAs, then the operation's own. A file listed twice keeps its first entry. **LoRA presets** save and load a LoRA list per operation.
 
 ## Controls · LLLite
 

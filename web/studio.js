@@ -93,11 +93,12 @@ export class Studio {
         for (const key of ['encoder', 'encoder_type', 'vae', 'weight_dtype']) if (key in source.model_overrides) shared[key] = source.model_overrides[key];
         return clone(shared);
     }
-    // The operation's settings with the project style, unless the operation overrides it. Style LoRAs come first; the operation's own LoRAs follow.
+    // The operation's settings with the global LoRAs and, unless the operation overrides it, the project style.
+    // LoRAs run global, then style, then the operation's own; a file listed twice keeps its first entry.
     styled(cfg) {
-        if (cfg.style_override) return cfg;
-        const style = this.projectStyle(), { loras = [], ...shared } = this.styleSettings(), names = new Set(loras.map(l => l.name));
-        return { ...cfg, ...shared, loras: [...loras, ...(cfg.loras || []).filter(l => !names.has(l.name))], ...(style ? { prompt_sections: { ...cfg.prompt_sections, style } } : {}) };
+        const { loras = [], ...shared } = cfg.style_override ? {} : this.styleSettings(), style = !cfg.style_override && this.projectStyle();
+        const all = [...clone((this.settings.loras || []).filter(l => l.enabled)), ...loras, ...(cfg.loras || [])];
+        return { ...cfg, ...shared, loras: all.filter((l, i) => all.findIndex(o => o.name === l.name) === i), ...(style ? { prompt_sections: { ...cfg.prompt_sections, style } } : {}) };
     }
     styleView(view) {
         const space = 'style', style = this.project.style ||= {};
@@ -226,10 +227,12 @@ export class Studio {
         };
         engineSelect.onchange = render; render();
         this.globalModelRender = render;
-        const models = el('div', {}, el('small', { text: 'One diffusion model for all engines. Encoder, VAE, sampling and adapter options can be configured below for each engine.' }), sharedModel, field('Engine options', engineSelect), controls);
+        const globalLoras = el('div'); this.loraControls(globalLoras, value, () => {}, value.presets, 'global');
+        const models = el('div', {}, el('small', { text: 'One diffusion model for all engines. Encoder, VAE, sampling and adapter options can be configured below for each engine.' }), sharedModel,
+            el('small', { text: 'Global LoRAs apply to every operation in every project, before the project style and operation LoRAs.' }), globalLoras, field('Engine options', engineSelect), controls);
         const transfer = el('div', { class: 'amm-button-grid' }, button('Export global settings', () => download('anima-manga-maker-config.json', value)), button('Import global settings', () => chooseFile('.json', files => this.action(async () => {
                 const imported = JSON.parse(await files[0].text()); if (!imported.presets || (!imported.models && !imported.defaults)) throw new Error('Invalid settings file');
-                value.defaults = imported.defaults || {}; value.models = imported.models || {}; globalModels(value); value.presets = imported.presets; Object.assign(text, textGeneratorDefaults, imported.text_generator || {}); renderText(); render();
+                value.defaults = imported.defaults || {}; value.models = imported.models || {}; value.loras = imported.loras || []; globalModels(value); value.presets = imported.presets; Object.assign(text, textGeneratorDefaults, imported.text_generator || {}); renderText(); render();
             }))), button('Export project settings', () => download('manga-project-settings.json', { config: this.project?.config || {}, presets: this.project?.presets || {}, layouts: this.project?.layouts || {} })),
             button('Import project settings', () => chooseFile('.json', files => this.action(async () => {
                 if (!this.project) throw new Error('Open a project'); const imported = JSON.parse(await files[0].text());
