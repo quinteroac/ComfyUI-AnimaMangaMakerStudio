@@ -84,15 +84,25 @@ export class Studio {
     projectStyle() {
         return ['animadex', 'stylebook'].map(source => this.project.style?.[source]?.trim()).filter(Boolean).join('\n');
     }
-    // The operation's settings with the project style in the Style section, unless the operation overrides it.
+    // What the Style workspace shares besides the prompt style: its enabled LoRAs, Artist Mixer, tag sliders, encoder and VAE.
+    styleSettings() {
+        const source = this.config('style', 'anima'), shared = {};
+        if (source.loras.some(l => l.enabled)) shared.loras = source.loras.filter(l => l.enabled);
+        if (source.artist_chain?.trim()) Object.assign(shared, { artist_chain: source.artist_chain, artist_strength: source.artist_strength });
+        if (source.tag_sliders?.enabled) shared.tag_sliders = source.tag_sliders;
+        for (const key of ['encoder', 'encoder_type', 'vae', 'weight_dtype']) if (key in source.model_overrides) shared[key] = source.model_overrides[key];
+        return clone(shared);
+    }
+    // The operation's settings with the project style, unless the operation overrides it. Style LoRAs come first; the operation's own LoRAs follow.
     styled(cfg) {
-        const style = !cfg.style_override && this.projectStyle();
-        return style ? { ...cfg, prompt_sections: { ...cfg.prompt_sections, style } } : cfg;
+        if (cfg.style_override) return cfg;
+        const style = this.projectStyle(), { loras = [], ...shared } = this.styleSettings(), names = new Set(loras.map(l => l.name));
+        return { ...cfg, ...shared, loras: [...loras, ...(cfg.loras || []).filter(l => !names.has(l.name))], ...(style ? { prompt_sections: { ...cfg.prompt_sections, style } } : {}) };
     }
     styleView(view) {
         const space = 'style', style = this.project.style ||= {};
         const controls = el('aside', { class: 'amm-controls' }, el('h2', { text: 'Project style' }),
-            el('small', { text: 'References, panels and Sketch to Art use this style in the Style section unless an operation turns off "Use project style".' }));
+            el('small', { text: 'References, panels, the drawing editor and Upscale use this style in the Style section, plus the LoRAs, Artist Mixer, tag sliders, text encoder and VAE set for the preview below, unless an operation turns off "Use project style".' }));
         const previewControls = el('div');
         const renderPreviewControls = () => {
             const cfg = this.config(space, 'anima');
@@ -472,7 +482,7 @@ export class Studio {
         task.querySelector('input').placeholder = 'TEXT_TO_IMAGE';
         task.querySelector('input').addEventListener('input', e => { sections.task = e.target.value; update(); });
         group.append(task);
-        const inputs = {}, inherited = this.projectStyle();
+        const inputs = {}, inherited = this.projectStyle(), shared = inherited || (space !== 'style' && Object.keys(this.styleSettings()).length);
         let showStyle = () => {};
         group.append(el('div', { class: 'amm-row' }, ...['animadex', 'stylebook'].map(source => iconButton(source === 'animadex' ? 'Browse Animadex styles and characters' : 'Browse Stylebook styles', 'image',
             () => openStylePicker(this, source, (key, update) => {
@@ -489,13 +499,13 @@ export class Studio {
             }, onchange: e => { status.textContent = snippet(e.target.value); } });
             inputs[key] = input;
             // The project style fills this section until the operation overrides it; the operation's own text is kept for when it does.
-            const useProject = key === 'style' && inherited ? el('input', { type: 'checkbox', checked: !cfg.style_override, onchange: e => { cfg.style_override = !e.target.checked; showStyle(); update(); } }) : null;
+            const useProject = key === 'style' && shared ? el('input', { type: 'checkbox', checked: !cfg.style_override, onchange: e => { cfg.style_override = !e.target.checked; showStyle(); update(); } }) : null;
             if (useProject) showStyle = () => {
                 useProject.checked = !cfg.style_override; input.disabled = useProject.checked; input.value = useProject.checked ? inherited : sections.style || '';
                 status.textContent = useProject.checked ? `Project · ${snippet(inherited)}` : snippet(sections.style); status.classList.toggle('amm-filled', !!input.value.trim());
             };
             group.append(el('details', { class: 'amm-prompt-section' }, el('summary', {}, el('span', { text: tag }), status),
-                useProject ? toggle('Use project style', useProject, 'Turn off to write a style for this operation only.') : null, enhanceField(input, key, tag)));
+                useProject ? toggle('Use project style', useProject, 'Also applies the Style workspace\'s LoRAs, Artist Mixer, tag sliders, text encoder and VAE. Turn off to style this operation on its own.') : null, enhanceField(input, key, tag)));
         }
         const free = el('textarea', { class: 'amm-prompt', value: cfg.prompt || '', placeholder: 'Additional text or any prompt outside this format…', oninput: e => { cfg.prompt = e.target.value; update(); } });
         group.querySelector('summary').append(iconButton('Clear prompt', 'clear', e => {
@@ -851,7 +861,7 @@ export class Studio {
                 if (!dialogue.text.trim()) throw new Error('Enter dialogue text before enhancing it.');
                 cfg.instruction = `Improve this manga dialogue or thought text for clarity, natural phrasing and concision. Preserve its original language, meaning, speaker voice, names and tone. Do not invent story details or turn it into an image prompt. Return only the improved dialogue, without tags, quotation marks, markdown fences or explanations.\n\nText to improve:\n${dialogue.text}`;
             } else if (textTask) cfg.instruction = textInstruction(operation, this.styled(this.config(space)), section);
-            if (!textTask) cfg.prompt_sections = this.styled(cfg).prompt_sections;
+            if (!textTask) Object.assign(cfg, this.styled(cfg));
             if (cfg.random_seed) cfg.seed = Math.floor(Math.random() * 2 ** 48);
             const references = textTask ? operation === 'describe' ? [assetId] : [] : referenceLimits[engine] ? cfg.references : [];
             // Control images are staged with the references and scene controls are rendered; a control without either is skipped.
@@ -920,7 +930,7 @@ export class Studio {
         const dialog = this.modal(`Upscale · ${asset.name}`, content, button('Upscale', () => this.action(async () => { await this.upscale(asset, cfg); dialog.close(); }), { class: 'amm-primary' }));
     }
     async upscale(asset, cfg) {
-        const project = this.project, jobId = uuid(), settings = clone(cfg);
+        const project = this.project, jobId = uuid(), settings = clone(this.styled(cfg));
         if (settings.random_seed) settings.seed = Math.floor(Math.random() * 2 ** 48);
         Object.assign(settings, { aspect_ratio: sizeSettings(asset).aspect_ratio, megapixels: cfg.megapixels });
         const [path] = await request(`/projects/${project.id}/stage`, { assets: [asset.id] }, 'POST');

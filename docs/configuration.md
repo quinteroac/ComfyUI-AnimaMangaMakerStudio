@@ -55,7 +55,7 @@ The LLLite adds no measurable time on Turbo (about 4 s per 832×1216 image on an
 
 **Structured prompt** provides TASK, Subject, Appearance, Pose, Expression, Composition, Environment, Lighting and Style. Only nonempty fields are included, followed by **Free prompt**, which also accepts a complete prompt. Anima reads Danbooru tags and natural language alike. **Show combined prompt** displays the resulting text, and Anima's negative prompt is under **Sampling**.
 
-The Style section inherits the project style from the **Style** workspace unless **Use project style** is turned off for the operation. **Browse Animadex styles and characters** and **Browse Stylebook styles** add entries to the matching section.
+The Style section inherits the project style from the **Style** workspace unless **Use project style** is turned off for the operation. With it on, the operation also uses the enabled LoRAs (before its own; a LoRA with the same file is taken from Style), the Artist Mixer chain and strength, enabled tag sliders, and the text encoder, encoder type, VAE and weight dtype set in the Style preview. **Browse Animadex styles and characters** and **Browse Stylebook styles** add entries to the matching section.
 
 Editing prompt fields or settings keeps the selected preset visible with **Modified**. **Save settings as preset** saves them under the selected name or a new name. The **Clone preset** icon copies a preset under a new name. The six bundled **References** presets (Character, Expressions, Poses, Clothing, Objects and Environments) fill TASK and the relevant prompt sections; they do not specify models, sampling or LoRAs.
 

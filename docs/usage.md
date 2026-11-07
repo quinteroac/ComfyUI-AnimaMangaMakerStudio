@@ -28,7 +28,7 @@ All three share prompts, presets, AR/MP, seed, sampling overrides, additional Lo
 
 ## Style
 
-The **Style** workspace stores the project style as Danbooru tags and natural-language prose, with Animadex and Stylebook pickers. References, panels and Sketch to Art use it in the Style section unless an operation turns off **Use project style**. **Generate preview** renders test images with Anima; previews stay in ComfyUI's temp folder and are discarded when you close Studio.
+The **Style** workspace stores the project style as Danbooru tags and natural-language prose, with Animadex and Stylebook pickers. The LoRAs, Artist Mixer, tag sliders, text encoder and VAE set for the preview are part of the project style too. References, panels, the drawing editor and Upscale use all of it unless an operation turns off **Use project style**. **Generate preview** renders test images with Anima; previews stay in ComfyUI's temp folder and are discarded when you close Studio.
 
 ## Working with references and panels
 
