@@ -3,7 +3,11 @@ import { options } from './prompts.js';
 import { combo, slider, seed } from './controls.js';
 import { qwenEditDefaults, installedFile } from './qwen-prompt.js';
 
+// Adapted from Manga Maker's Finishing refine instruction: subtle fixes that keep the page layout and lettering.
+const refinePage = 'Refine <image1> as a finished printed manga page while preserving the exact layout. Keep the canvas size, panel count, panel shapes and borders, gutters, reading order, framing and the position of every character and object. Keep each character\'s identity, face, hairstyle, clothing, pose and expression. Keep all speech bubbles, captions and lettering exactly as they are. Only make subtle local fixes: clean rough or broken ink lines, correct small anatomy errors in hands and faces, smooth continuity of backgrounds across each panel, and make blacks, grays and screentones consistent between panels. Do not add or remove characters, panels, text or bubbles, do not crop, zoom or restyle the page.';
+
 const editPresets = {
+    'Refine page': { instruction: refinePage },
     'Remove object': { instruction: qwenEditDefaults.instruction },
     'Remove text': { instruction: 'Remove all text and lettering from <image1> and restore the artwork behind it. Keep everything else in <image1> unchanged.' },
     'Clean lines': { instruction: 'Clean up <image1> as finished manga art: crisp ink lines, no sketch strokes or smudges. Keep the composition, characters and shading of <image1>.' },
@@ -15,7 +19,9 @@ export function editControls(studio, kind, changed, blending = true) {
     const cfg = studio.config(scope, 'qwen_edit');
     if (!existing) {
         Object.assign(cfg, structuredClone(qwenEditDefaults), { qwen_model: installedFile(studio.defs, 'UNETLoader', 'unet_name', qwenEditDefaults.qwen_model),
-            qwen_encoder: installedFile(studio.defs, 'CLIPLoader', 'clip_name', qwenEditDefaults.qwen_encoder), qwen_vae: installedFile(studio.defs, 'VAELoader', 'vae_name', qwenEditDefaults.qwen_vae) });
+            qwen_encoder: installedFile(studio.defs, 'CLIPLoader', 'clip_name', qwenEditDefaults.qwen_encoder), qwen_vae: installedFile(studio.defs, 'VAELoader', 'vae_name', qwenEditDefaults.qwen_vae) },
+            // Refinement usually works on whole pages, which lose detail at 1 MP.
+            blending ? {} : { instruction: refinePage, megapixels: 2 });
         studio.saveSoon();
     }
     const element = el('div');

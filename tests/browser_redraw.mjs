@@ -158,6 +158,7 @@ try {
     await studio.locator(`.amm-panels .amm-asset[data-asset-id="${panel.id}"]`).getByRole('menuitem', { name: 'Refine with Qwen', exact: true }).click();
     const refineView = studio.locator('.amm-refine');
     assert.equal(await refineView.getByLabel('Original image', { exact: true }).inputValue(), panel.id);
+    assert((await refineView.getByLabel('Instruction', { exact: true }).inputValue()).startsWith('Refine <image1> as a finished printed manga page'), 'Refinement starts from the page refine instruction');
     await refineView.getByLabel('Prompt and settings preset', { exact: true }).selectOption('Clean lines');
     await refineView.locator('summary').filter({ hasText: 'Qwen models' }).click();
     for (const [label, node, key] of [['Diffusion model', 'UNETLoader', 'unet_name'], ['Text encoder · Qwen3-VL', 'CLIPLoader', 'clip_name'], ['VAE', 'VAELoader', 'vae_name']]) {
