@@ -9,6 +9,8 @@ import { bboxControls } from './bbox-panel.js';
 import { controlLayers, maskLayer, upload } from './control-layers.js';
 import { inpaintControls } from './inpaint-panel.js';
 import { redrawControls } from './redraw-panel.js';
+import { editControls } from './edit-panel.js';
+import { buildQwenEditPrompt } from './qwen-prompt.js';
 
 export function sketchControls(studio, kind, project, send, busyChanged, scene) {
     const scope = `sketch_${kind}`, sketchState = studio.state(scope);
@@ -39,12 +41,13 @@ export function sketchControls(studio, kind, project, send, busyChanged, scene) 
     let dimensions, previewImage, drag; const layerId = uuid().slice(0, 8);
     let mode = 'sketch';
     // Workflows that work on the canvas or the selected region; Inpaint takes its area from the mask and BBox the whole canvas.
-    const regional = ['sketch', 'redraw', 'manga'];
-    const titles = { sketch: 'Sketch to Art', inpaint: 'Inpaint', redraw: 'Redraw', manga: 'Art to Manga Panel', bbox: 'BBox to Image' };
+    const regional = ['sketch', 'redraw', 'edit', 'manga'];
+    const titles = { sketch: 'Sketch to Art', inpaint: 'Inpaint', redraw: 'Redraw', edit: 'Edit · Qwen', manga: 'Art to Manga Panel', bbox: 'BBox to Image' };
     const title = () => titles[mode];
     const hints = { sketch: 'Generate the canvas or a selected region as a new AI layer.', manga: 'Convert the canvas or selected region into an editable manga layer.',
         bbox: 'Draw boxes on the canvas, describe them, then generate the whole canvas as a new AI layer.', inpaint: 'Mask an area, then repaint it as a new AI layer.',
-        redraw: 'Redraw the canvas or a selected region keeping its lines, shading or layout, or extract its lineart as an ink layer.' };
+        redraw: 'Redraw the canvas or a selected region keeping its lines, shading or layout, or extract its lineart as an ink layer.',
+        edit: 'Edit the canvas or a selected region with a Qwen Image instruction, as a new AI layer.' };
     const status = el('small', { role: 'status', text: 'Generate the canvas or a selected region as a new AI layer.' });
     const canvas = el('canvas', { class: 'amm-sketch-preview', width: 320, height: 200, 'aria-label': 'Sketch region preview', 'aria-describedby': 'amm-sketch-region-help', tabIndex: 0 });
     const realtime = el('input', { type: 'checkbox', 'aria-label': 'Realtime on stroke release', onchange: () => {
@@ -108,14 +111,15 @@ export function sketchControls(studio, kind, project, send, busyChanged, scene) 
     const layers = controlLayers(studio, `drawing_${kind}`, send, () => dimensions, touched, scene);
     const inpaint = inpaintControls(studio, kind, send, () => dimensions, touched);
     const redraw = redrawControls(studio, kind, touched);
+    const edit = editControls(studio, kind, touched);
     const heading = el('h3', { text: title() });
     const tool = segmented('Drawing workflow', Object.entries(titles), 'sketch', () => {
         if (mode === 'bbox') bbox.hide();
         mode = tool.value; revision++; realtime.checked = false; pending = false;
         heading.textContent = title(); generate.textContent = `Generate ${title()}`;
         element.setAttribute('aria-label', `${title()} controls`);
-        workflowSettings.replaceChildren({ sketch: sketchSettings, inpaint: inpaint.element, redraw: redraw.element, manga: mangaSettings, bbox: bbox.element }[mode]); scheduleLive();
-        regionControls.hidden = ['bbox', 'inpaint'].includes(mode); layers.element.hidden = mode === 'manga'; paintPreview(); if (mode === 'bbox') bbox.sync();
+        workflowSettings.replaceChildren({ sketch: sketchSettings, inpaint: inpaint.element, redraw: redraw.element, edit: edit.element, manga: mangaSettings, bbox: bbox.element }[mode]); scheduleLive();
+        regionControls.hidden = ['bbox', 'inpaint'].includes(mode); layers.element.hidden = ['manga', 'edit'].includes(mode); paintPreview(); if (mode === 'bbox') bbox.sync();
         status.textContent = hints[mode];
     });
     const sketchSettings = el('div', {}, presets, blend, prompt, transparency, sampling, models, toggle('Realtime on stroke release', realtime));
@@ -203,8 +207,8 @@ export function sketchControls(studio, kind, project, send, busyChanged, scene) 
         if (active) { pending = true; return; }
         const lineart = mode === 'redraw' && redraw.cfg.task === 'lineart';
         stopping = false; pending = false; active = { token: uuid(), revision, mode, name: lineart ? 'Lineart' : title(), operation: lineart ? 'lineart' : mode, ink: lineart,
-            engine: { sketch: cfg.engine, inpaint: 'anima', redraw: 'anima', manga: 'manga_lite', bbox: bbox.cfg.engine }[mode],
-            settings: structuredClone({ sketch: studio.styled(cfg), inpaint: studio.styled(inpaint.cfg), redraw: studio.styled(redraw.cfg), manga: { ...manga.cfg, feather: 0, blend_opacity: 100 }, bbox: studio.styled({ ...bbox.cfg, boxes: bbox.boxes, feather: 0, blend_opacity: 100 }) }[mode]) };
+            engine: { sketch: cfg.engine, inpaint: 'anima', redraw: 'anima', edit: 'qwen_edit', manga: 'manga_lite', bbox: bbox.cfg.engine }[mode],
+            settings: structuredClone({ sketch: studio.styled(cfg), inpaint: studio.styled(inpaint.cfg), redraw: studio.styled(redraw.cfg), edit: edit.cfg, manga: { ...manga.cfg, feather: 0, blend_opacity: 100 }, bbox: studio.styled({ ...bbox.cfg, boxes: bbox.boxes, feather: 0, blend_opacity: 100 }) }[mode]) };
         status.textContent = 'Capturing drawing…'; update(); send('manga-drawing-snapshot', { token: active.token });
     }
     function liveEnabled() { return live.checked && mode === 'manga' && ready && !disposed; }
@@ -266,7 +270,7 @@ export function sketchControls(studio, kind, project, send, busyChanged, scene) 
                 Object.assign(ticket, area);
             }
             const r = ticket.region;
-            if (ticket.mode !== 'manga' && !ticket.ink) settings.controls = await layers.stage(data.controls || [], r, project, ticket.token);
+            if (!['manga', 'edit'].includes(ticket.mode) && !ticket.ink) settings.controls = await layers.stage(data.controls || [], r, project, ticket.token);
             if (settings.random_seed) settings.seed = Math.floor(Math.random() * 2 ** 48);
             let built;
             // BBox to Image is text-to-image: the layout comes from the boxes, so the drawing is not uploaded.
@@ -300,7 +304,8 @@ export function sketchControls(studio, kind, project, send, busyChanged, scene) 
                 else if (ticket.mode === 'redraw') {
                     const source = { source_path: imagePath, mode: settings.redraw_mode, patch: settings.redraw_patch, strength: settings.redraw_strength, end: settings.redraw_end };
                     built = buildPrompt(studio.defs, 'redraw', ticket.engine, { ...settings, aspect_ratio: `${r.width}:${r.height}`, redraw: source }, [], ticket.token);
-                } else built = ticket.mode === 'manga' ? buildMangaPrompt(studio.defs, settings, imagePath) : buildPrompt(studio.defs, 'sketch', ticket.engine, { ...settings, aspect_ratio: `${r.width}:${r.height}` }, [imagePath], ticket.token);
+                } else if (ticket.mode === 'edit') built = buildQwenEditPrompt(studio.defs, settings, imagePath);
+                else built = ticket.mode === 'manga' ? buildMangaPrompt(studio.defs, settings, imagePath) : buildPrompt(studio.defs, 'sketch', ticket.engine, { ...settings, aspect_ratio: `${r.width}:${r.height}` }, [imagePath], ticket.token);
             }
             job = await request(`/projects/${project}/jobs`, { id: ticket.token, operation: ticket.operation, engine: ticket.engine, kind, space: kind,
                 name: ticket.name, settings: { ...settings, region: r }, prompt: built.graph, output_node: built.outputNode, sources: [] }, 'POST');

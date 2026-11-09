@@ -21,7 +21,7 @@ store = ProjectStore(Path(folder_paths.get_user_directory()) / 'anima-manga-make
                      Path(folder_paths.get_user_directory()) / 'anima-manga-maker-projects')
 routes = PromptServer.instance.routes
 # Operations whose result is shown once from ComfyUI's temp folder and never imported into the project.
-preview_operations = ('sketch', 'inpaint', 'redraw', 'lineart', 'manga', 'bbox', 'style')
+preview_operations = ('sketch', 'inpaint', 'redraw', 'lineart', 'edit', 'manga', 'bbox', 'style')
 
 
 def endpoint(fn):

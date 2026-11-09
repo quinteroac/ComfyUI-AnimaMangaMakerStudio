@@ -77,7 +77,7 @@ try {
     const project = async () => (await fetch(`${backend.url}/anima-manga-maker/projects/${backend.project}`)).json();
     const fillModels = async scope => {
         await scope.locator('summary').filter({ hasText: 'Models and advanced settings' }).first().click();
-        for (const [label, node, key] of [['Diffusion model', 'UNETLoader', 'unet_name'], ['Text encoder', 'CLIPLoader', 'clip_name'], ['VAE', 'VAELoader', 'vae_name']]) {
+        for (const [label, node, key] of [['Text encoder', 'CLIPLoader', 'clip_name'], ['VAE', 'VAELoader', 'vae_name']]) {
             await scope.getByLabel(label, { exact: true }).first().fill(options(defs, node, key)[0]); await scope.getByLabel(label, { exact: true }).first().press('Tab');
         }
     };
@@ -115,6 +115,20 @@ try {
     // The fixture result is #c1d8cb everywhere: an ink layer of black with the lines' brightness as opacity (canvas center, away from the feathered edge).
     assert.deepEqual(ink.slice(0, 3), [0, 0, 0]); assert(Math.abs(ink[3] - 204) <= 2, `Ink opacity follows the line brightness: ${ink}`);
     assert(ink[4].some(name => name.startsWith('Redraw · ')));
+    // Edit · Qwen: the drawing goes to Qwen Image 2.1 as <image1> with the instruction, without the Anima graph.
+    await choose(controls, 'Drawing workflow', 'edit');
+    const edit = dialog.getByRole('complementary', { name: 'Edit · Qwen controls', exact: true });
+    await edit.getByLabel('Prompt and settings preset', { exact: true }).selectOption('Remove text');
+    await edit.locator('summary').filter({ hasText: 'Qwen models' }).click();
+    for (const [label, node, key] of [['Diffusion model', 'UNETLoader', 'unet_name'], ['Text encoder · Qwen3-VL', 'CLIPLoader', 'clip_name'], ['VAE', 'VAELoader', 'vae_name']]) {
+        await edit.getByLabel(label, { exact: true }).fill(options(defs, node, key)[0]); await edit.getByLabel(label, { exact: true }).press('Tab');
+    }
+    await edit.getByRole('button', { name: 'Generate Edit · Qwen', exact: true }).click();
+    await edit.getByText('AI layer added · Save to project to preserve it.', { exact: true }).waitFor({ timeout: 30000 });
+    graph = queued.at(-1).prompt;
+    const qwen = Object.values(graph).find(n => n.class_type === 'TextEncodeQwenImage21');
+    assert(qwen.inputs.prompt.startsWith('Remove all text and lettering from <image1>'), 'The Remove text preset fills the instruction');
+    assert(!Object.values(graph).some(n => n.class_type.startsWith('Anima')), 'Qwen edit runs without Anima nodes');
     await dialog.getByRole('button', { name: 'Save to project', exact: true }).click();
     await dialog.getByText('Saved to project · Layers preserved', { exact: true }).waitFor();
     await dialog.getByRole('button', { name: 'Close', exact: true }).click();
