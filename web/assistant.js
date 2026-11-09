@@ -3,7 +3,7 @@ import { el, button, iconButton, field, assetUrl, request } from './client.js';
 import { slider, toggle } from './controls.js';
 import { actions, modules, systemPrompt, readable } from './story-data.js';
 
-const usable = (project, ids) => ids.filter(id => project.assets.some(a => a.id === id && !a.deleted && !a.missing));
+const usable = (project, ids) => ids.filter(id => project.assets.some(a => a.id === id && !a.missing));
 
 // Settings section for the Story assistant; `value` is the global settings draft.
 export async function assistantSettings(host, value, fail) {
@@ -115,7 +115,7 @@ export class Assistant {
     }
     attach(module) {
         const attached = this.attachments[module];
-        const picker = el('div', { class: 'amm-asset-picker' }, ...this.project.assets.filter(a => !a.deleted && !a.missing).map(a => this.studio.assetPickerItem(a, () => {
+        const picker = el('div', { class: 'amm-asset-picker' }, ...this.project.assets.filter(a => !a.missing).map(a => this.studio.assetPickerItem(a, () => {
             if (!attached.includes(a.id)) attached.push(a.id);
             this.render();
         })));

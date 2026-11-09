@@ -165,7 +165,7 @@ export async function renderScene(scene, cameraName, size, map) {
 export const sceneMap = type => type === 'depth' ? 'depth' : type === 'regional' ? 'regions' : 'edges';
 
 // Images that used a scene: panel results whose settings hold a scene control, and drawings saved with a scene layer.
-export const sceneUsers = (assets, id) => assets.filter(a => !a.deleted && (a.metadata?.scene?.scene === id || a.metadata?.settings?.controls?.some(c => c.enabled && c.scene?.scene === id)));
+export const sceneUsers = (assets, id) => assets.filter(a => (a.metadata?.scene?.scene === id || a.metadata?.settings?.controls?.some(c => c.enabled && c.scene?.scene === id)));
 
 // Opens the scene editor on the project's scenes, starting at `current` ({ scene, camera }). Resolves with the chosen scene and camera,
 // plus the maps rendered from it at `size` unless `pick` only chooses a camera, or with null when closed.

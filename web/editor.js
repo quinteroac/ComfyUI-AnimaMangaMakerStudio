@@ -350,7 +350,7 @@ export class PageEditor {
         const p = this.panel;
         if (p) {
             const assign = el('select', { onchange: e => { this.change(() => p.asset = e.target.value || null); this.loadImages(); } }, el('option', { value: '', text: 'No image' }),
-                ...this.studio.project.assets.filter(a => a.kind === 'panels' && !a.deleted).map(a => el('option', { value: a.id, text: a.name })));
+                ...this.studio.project.assets.filter(a => a.kind === 'panels').map(a => el('option', { value: a.id, text: a.name })));
             assign.value = p.asset || '';
             const b = bounds(p.polygon);
             this.properties.append(section(`Panel ${p.order}`, grid(input('Reading order', 'order', 'number', p), input('Layer', 'z', 'number', p)), field('Panel', assign),

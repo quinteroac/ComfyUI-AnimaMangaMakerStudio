@@ -272,7 +272,7 @@ assert.equal(restored.prompt_sections.subject, sections.subject);
 assert.equal(restored.prompt, free);
 restored.prompt_sections.subject = 'Changed';
 assert.equal(reference.metadata.settings.prompt_sections.subject, sections.subject);
-for (const asset of [{ kind: 'references' }, { ...reference, deleted: true }, { ...reference, missing: true }]) assert.equal(referencePrompt(asset), null);
+for (const asset of [{ kind: 'references' }, { ...reference, missing: true }]) assert.equal(referencePrompt(asset), null);
 for (const kind of ['references', 'panels', 'pages']) {
     assert.deepEqual(referencePrompt({ ...reference, kind }), referencePrompt(reference));
     assert.deepEqual(referencePrompt({ kind, metadata: { settings: { prompt: 'An unstructured prompt.' } } }), { prompt_sections: {}, prompt: 'An unstructured prompt.' });

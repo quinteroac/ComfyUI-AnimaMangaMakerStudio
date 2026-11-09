@@ -50,17 +50,17 @@ const tools = {
         run: async () => text(await json('/projects')) },
     get_project: { description: 'Summarize a project: revision, asset counts, page layouts, active jobs and story size.', annotations: read, inputSchema: input({ project: projectInput }, ['project']),
         run: async ({ project: id }) => {
-            const data = await project(id), story = normalizeStory(data.story || {}), live = data.assets.filter(a => !a.deleted);
+            const data = await project(id), story = normalizeStory(data.story || {});
             return text({ id: data.id, name: data.name, revision: data.revision, updated: data.updated,
-                assets: Object.fromEntries(['references', 'panels', 'pages'].map(kind => [kind, live.filter(a => a.kind === kind).length])),
+                assets: Object.fromEntries(['references', 'panels', 'pages'].map(kind => [kind, data.assets.filter(a => a.kind === kind).length])),
                 page_layouts: (data.workspace.design?.pages || []).map(p => ({ id: p.id, name: p.name })), active_jobs: data.jobs.filter(j => ['registered', 'queued', 'running'].includes(j.state)).map(j => ({ id: j.id, operation: j.operation, state: j.state })),
                 story: { title: story.logline.title, characters: story.characters.length, acts: story.plot.acts.length, chapters: story.script.chapters.length,
                     pages: story.script.chapters.reduce((n, c) => n + c.pages.length, 0) } });
         } },
-    list_assets: { description: 'List a project\'s images. Trash is excluded unless include_deleted is true.', annotations: read,
-        inputSchema: input({ project: projectInput, kind: { type: 'string', enum: ['references', 'panels', 'pages'] }, include_deleted: { type: 'boolean' } }, ['project']),
-        run: async ({ project: id, kind, include_deleted }) => text((await project(id)).assets.filter(a => (!kind || a.kind === kind) && (include_deleted || !a.deleted))
-            .map(a => ({ id: a.id, kind: a.kind, name: a.name, width: a.width, height: a.height, version: a.version, parent: a.parent, tags: a.tags || [], deleted: a.deleted, missing: a.missing,
+    list_assets: { description: 'List a project\'s images.', annotations: read,
+        inputSchema: input({ project: projectInput, kind: { type: 'string', enum: ['references', 'panels', 'pages'] } }, ['project']),
+        run: async ({ project: id, kind }) => text((await project(id)).assets.filter(a => !kind || a.kind === kind)
+            .map(a => ({ id: a.id, kind: a.kind, name: a.name, width: a.width, height: a.height, version: a.version, parent: a.parent, tags: a.tags || [], missing: a.missing,
                 operation: a.metadata?.operation, engine: a.metadata?.engine, description_prompt: a.metadata?.description_prompt }))) },
     view_asset: { description: 'Return a project image. The 320 px thumbnail is returned unless thumbnail is false.', annotations: read,
         inputSchema: input({ project: projectInput, asset: { type: 'string', description: 'Asset id from list_assets' }, thumbnail: { type: 'boolean', default: true } }, ['project', 'asset']),

@@ -47,13 +47,13 @@ Hover an image to show its checkbox; selecting images shows a bar with **Clear s
 
 ## Refinement
 
-**Refinement** edits a reference, panel or page with a Qwen Image 2.1 instruction (`<image1>` is the original), for example removing text or an object, or cleaning lines. Open it from **Refine with Qwen** in an image's menu or pick the **Original image**; the result is saved as a new version and shown next to the original. With a page as the original, the gallery below lists the exported pages, and **Download image** in their menu downloads them; **Download page** in Page layout downloads the current page directly. The drawing editor has the same edit as the **Edit · Qwen** workflow for a canvas or region. Requires the Qwen Image 2.1 model, its Qwen3-VL text encoder and VAE.
+**Refinement** edits a reference, panel or page with a Qwen Image 2.1 instruction (`<image1>` is the original), for example refining a page while keeping its layout and lettering (the default **Refine page** instruction, at 2 MP), removing text or an object, or cleaning lines. Open it from **Refine with Qwen** in an image's menu or pick the **Original image**; the result is saved as a new version and shown next to the original. With a page as the original, the gallery below lists the exported pages, and **Download image** in their menu downloads them; **Download page** in Page layout downloads the current page directly. The drawing editor has the same edit as the **Edit · Qwen** workflow for a canvas or region. Requires the Qwen Image 2.1 model, its Qwen3-VL text encoder and VAE.
 
 ## Connected references
 
 **Choose references** and **Choose control image** open one picker for project images, ComfyUI's input folder and **Upload from computer**. An image from outside the project is imported into References and connected in the same step, so it keeps an id, versions and Trash like any other asset.
 
-**Connected visual references** marks deleted images as **Trash** and missing files as **Missing file**. **Restore reference** recovers a connected image from Trash without changing its position; **Remove** disconnects it. Generation errors identify the unavailable image instead of silently skipping it.
+**Connected visual references** marks deleted images as **Missing** and missing files as **Missing file**; **Remove** disconnects them. Generation errors identify the unavailable image instead of silently skipping it.
 
 ## Reusing prompts
 

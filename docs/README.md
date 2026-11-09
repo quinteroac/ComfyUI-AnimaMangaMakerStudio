@@ -14,7 +14,7 @@ These guides explain how the workspace is organized, which settings affect each 
 | [Using Studio](usage.md) | Style, references, panels, engines and image actions |
 | [Drawing and manga conversion](drawing.md) | Klecks, Sketch to Art, BBox to Image, Art to Manga Panel, regions, masks and layered saving |
 | [Page layout](page-layout.md) | Composition, panel framing, dialogue, fonts and export |
-| [Projects and storage](projects.md) | Versions, Trash, saving, migration, jobs and common problems |
+| [Projects and storage](projects.md) | Versions, deleting, saving, migration, jobs and common problems |
 | [Credits and attribution](credits.md) | Upstream projects, contributors, workflow sources and license notices |
 | [Development and validation](development.md) | Bundled editor build, test commands and validation scope |
 

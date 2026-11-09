@@ -6,7 +6,7 @@
 
 ## Galleries and versions
 
-Importing brings an existing image into References or Panels. **Delete** moves an asset to **Trash**; **Restore** recovers it. **Missing file** means the recorded file cannot be found on disk. Connected references retain their positions when restored from Trash.
+Importing brings an existing image into References or Panels. **Delete** removes the image from the project and deletes its files from disk (image, thumbnail, imported original and Klecks drawing); it cannot be undone. A version of a deleted image moves up to that image's parent. **Missing file** means the recorded file cannot be found on disk.
 
 Saving over a drawing or refining an asset creates a new version and preserves the original. Drawing documents include a PNG for the composed image and a PSD for the editable layers. Gallery sorting, search and selection help organize the project; galleries display up to 48 thumbnails per page.
 
@@ -31,7 +31,7 @@ Drawing generation and manga conversion return previews to the open Klecks sessi
 | A node is reported missing | Install the package listed in [Installation](installation.md), restart when idle and refresh lists |
 | A model selection is missing or unregistered | Confirm its registered ComfyUI location, refresh lists and select the file again |
 | Image analysis or prompt enhancement fails | Verify the global text generator; image tasks need a vision-capable encoder |
-| A reference is marked Trash | Restore it from the connected-reference controls or the Trash gallery |
+| A connected reference shows Missing | It was deleted or its file is gone; remove it from the connected references or reimport it |
 | A reference is marked Missing file | Recover the file or reconnect an available asset |
 | A drawing result is skipped | The canvas changed after capture; generate from the current drawing |
 | A layout's font changes after migration | Install the same font file on the destination installation |

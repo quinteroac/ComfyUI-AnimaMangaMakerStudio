@@ -51,7 +51,7 @@ export const referencePresets = {
 };
 
 export function referencePrompt(asset) {
-    if (asset.deleted || asset.missing) return null;
+    if (asset.missing) return null;
     const settings = asset.metadata?.settings || {};
     const sections = {};
     for (const key of ['task', ...promptSections.map(([key]) => key)]) {

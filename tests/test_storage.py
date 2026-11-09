@@ -51,9 +51,8 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(second['version'], 2)
         self.assertEqual(self.store.asset_path(self.project['id'], first).read_bytes(), png())
         duplicate = self.store.duplicate(self.project['id'], 'Copia')
-        self.store.patch_assets(duplicate['id'], {first['id']: {'name': 'Renombrada', 'deleted': True}})
+        self.store.patch_assets(duplicate['id'], {first['id']: {'name': 'Renombrada'}})
         self.assertEqual(self.store.read(self.project['id'])['assets'][0]['name'], 'A')
-        self.assertFalse(self.store.read(self.project['id'])['assets'][0]['deleted'])
         moved = self.directory / 'moved'
         self.store.root().rename(moved)
         self.store.configure({'root': str(moved)})
@@ -62,6 +61,21 @@ class StorageTests(unittest.TestCase):
         self.assertTrue(reopened.asset_path(self.project['id'], first).is_file())
         reopened.asset_path(self.project['id'], first).unlink()
         self.assertTrue(reopened.read(self.project['id'])['assets'][0]['missing'])
+
+    def test_delete_removes_files(self):
+        first = self.store.import_image(self.project['id'], 'panels', png(), 'A')
+        drawn = self.store.import_drawing(self.project['id'], 'panels', png('blue'), b'8BPS\x00\x01' + bytes(26), 'B', parent=first['id'])
+        third = self.store.import_image(self.project['id'], 'panels', png('green'), 'C', parent=drawn['id'])
+        folder = self.store.directory(self.project['id']) / 'panels'
+        files = lambda asset: [p for p in folder.iterdir() if p.stem.split('.')[0] == asset['id']]
+        document = self.store.drawing_path(self.project['id'], drawn)
+        self.assertEqual(len(files(drawn)), 3); self.assertTrue(document.is_file())
+        self.store.delete_assets(self.project['id'], [drawn['id']])
+        self.assertEqual(files(drawn), []); self.assertFalse(document.exists())
+        assets = self.store.read(self.project['id'])['assets']
+        self.assertEqual([a['id'] for a in assets], [first['id'], third['id']])
+        self.assertEqual(assets[1]['parent'], first['id'])
+        self.assertEqual(len(files(first)), 3)
 
     def test_story_and_assistant_conversations(self):
         story = {'logline': {'title': 'Kitsune'}, 'characters': [{'id': 'a', 'name': 'Aiko'}]}

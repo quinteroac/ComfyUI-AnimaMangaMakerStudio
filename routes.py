@@ -197,6 +197,12 @@ async def patch_assets(request):
     return web.json_response(store.patch_assets(request.match_info['project'], await request.json()))
 
 
+@routes.delete('/anima-manga-maker/projects/{project}/assets')
+@endpoint
+async def delete_assets(request):
+    return web.json_response(await asyncio.to_thread(store.delete_assets, request.match_info['project'], (await request.json())['assets']))
+
+
 @routes.get('/anima-manga-maker/projects/{project}/assets/{asset}')
 @endpoint
 async def view(request):

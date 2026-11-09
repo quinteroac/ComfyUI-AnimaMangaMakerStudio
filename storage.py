@@ -211,7 +211,7 @@ class ProjectStore:
         with self.lock:
             if parent:
                 original = self.asset(project_id, parent)
-                if original['kind'] != kind or original['deleted'] or original['missing']:
+                if original['kind'] != kind or original['missing']:
                     raise ValueError('Select an available original from the same category')
             relative = f'{kind}/{uuid.uuid4().hex}.psd'
             path = contained(self.directory(project_id), relative)
@@ -250,17 +250,39 @@ class ProjectStore:
             asset = {'id': asset_id, 'path': relative, 'kind': kind, 'name': str(name), 'created': time.time(),
                      'width': image.width, 'height': image.height, 'metadata': metadata or {},
                      'parent': parent, 'version': parent_asset['version'] + 1 if parent_asset else 1,
-                     'sources': sources or [], 'result_id': result_id, 'deleted': False}
+                     'sources': sources or [], 'result_id': result_id}
             data['assets'].append(asset)
             self.write(data)
             return asset
+
+    def delete_assets(self, project_id, ids):
+        """Removes the images from the project and their files from disk: image, thumbnail, imported bytes and drawing document.
+        A version of a deleted image moves up to that image's parent."""
+        with self.lock:
+            data = self.read(project_id)
+            removed = [a for a in data['assets'] if a['id'] in ids]
+            parents = {a['id']: a['parent'] for a in removed}
+            data['assets'] = [a for a in data['assets'] if a['id'] not in parents]
+            for asset in data['assets']:
+                while asset['parent'] in parents:
+                    asset['parent'] = parents[asset['parent']]
+            self.write(data)
+            directory = self.directory(project_id)
+            for asset in removed:
+                path = self.asset_path(project_id, asset)
+                files = [path, path.with_name(f'{asset["id"]}.thumb.webp'), path.with_name(f'{asset["id"]}.original')]
+                if asset.get('metadata', {}).get('drawing_document'):
+                    files.append(self.drawing_path(project_id, asset))
+                for file in files:
+                    contained(directory, file.relative_to(directory)).unlink(missing_ok=True)
+            return data
 
     def patch_assets(self, project_id, changes):
         with self.lock:
             data = self.read(project_id)
             for asset in data['assets']:
                 patch = changes.get(asset['id'], {})
-                for field in ('name', 'deleted', 'order', 'tags'):
+                for field in ('name', 'order', 'tags'):
                     if field in patch:
                         asset[field] = patch[field]
             return self.write(data)

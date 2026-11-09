@@ -16,6 +16,7 @@ import { editControls } from './edit-panel.js';
 import { buildQwenEditPrompt } from './qwen-prompt.js';
 
 const spaces = { story: 'Story', style: 'Style', references: 'References', panels: 'Panels', refine: 'Refinement', design: 'Page layout' };
+const deleteWarning = 'The image files are deleted from disk. This cannot be undone.';
 const kindNames = { references: 'References', panels: 'Panels', pages: 'Pages' };
 const engines = { anima: 'Anima', anima_ref: 'Anima Ref', anima_snapref: 'Anima SnapRef' };
 const textTasks = { enhance: 'Enhance section', describe: 'Create reference prompt' };
@@ -194,8 +195,8 @@ export class Studio {
             save(copyName, clone(presets[name])); this.saveSoon();
         });
     }
-    confirm(title, fn) {
-        const dialog = this.modal(title, el('p', { text: 'Confirm this operation. Removed assets can be recovered using the Trash filter.' }),
+    confirm(title, fn, message = 'Confirm this operation.') {
+        const dialog = this.modal(title, el('p', { text: message }),
             button('Cancel', () => dialog.close()), button('Confirm', () => this.action(async () => { await fn(); dialog.close(); }), { class: 'amm-danger' }));
     }
     createProject(onCreated) { this.ask('Project name', 'New manga', async name => { const p = await request('/projects', { name }, 'POST'); this.projects = await request('/projects'); await this.open(p.id); onCreated?.(); }); }
@@ -441,7 +442,7 @@ export class Studio {
                     controlTypes[c.type] ? el('small', { text: `${controlTypes[c.type].label} · ${controlTypes[c.type].hint}` }) : null,
                     combo('Control model', options(this.defs, 'ModelPatchLoader', 'name'), c.patch, value => { c.patch = value; changed(); }),
                     el('div', { class: 'amm-row amm-control-image' }, asset ? el('img', { src: assetUrl(this.project.id, asset.id, true), alt: asset.name, class: 'amm-control-thumb' }) : null,
-                        el('small', { text: c.scene ? `Scene · ${scene ? `${scene.name} · ${c.scene.camera}` : 'deleted scene'} · ${sceneMap(c.type)}` : asset ? `${asset.name}${asset.deleted ? ' · Trash' : asset.missing ? ' · Missing file' : ''}` : 'No control image' }),
+                        el('small', { text: c.scene ? `Scene · ${scene ? `${scene.name} · ${c.scene.camera}` : 'deleted scene'} · ${sceneMap(c.type)}` : asset ? `${asset.name}${asset.missing ? ' · Missing file' : ''}` : 'No control image' }),
                         iconButton('Choose control image', 'image', () => this.chooseImage('Choose control image', ref => { c.image = ref; delete c.scene; changed(); refresh(); this.jobs(); return true; })),
                         // A scene camera is rendered at the output size on every generation, so edits to the scene reach the next panel.
                         button('From scene…', () => this.action(async () => {
@@ -549,7 +550,7 @@ export class Studio {
         return iconButton('Create prompt from image', 'sparkles', () => {
             this.closeAssetMenu(); this.action(() => this.run('describe', space, asset.id));
         }, { role: 'menuitem', class: 'amm-menu-item', 'data-run': 'describe', 'data-text-source': asset.id,
-            disabled: asset.deleted || asset.missing || !this.textGeneratorAvailable(),
+            disabled: asset.missing || !this.textGeneratorAvailable(),
             title: 'Analyze this reference with the global CLIP and create a structured prompt' }, true);
     }
     textGeneratorAvailable() {
@@ -578,10 +579,7 @@ export class Studio {
             list.replaceChildren(...cfg.references.map((id, i) => {
                 const a = this.project.assets.find(a => a.id === id);
                 const card = el('div', { 'data-asset-id': id }, el('img', { src: assetUrl(this.project.id, id, true), alt: a?.name || 'Missing', loading: 'lazy' }),
-                    el('small', { text: `${i + 1}. ${a?.name || 'Missing'}${a?.deleted ? ' · Trash' : a?.missing ? ' · Missing file' : ''}` }),
-                    a?.deleted ? iconButton('Restore reference', 'restore', () => this.action(async () => {
-                        await this.patchAssets({ [id]: { deleted: false } }); this.galleryRefresh.forEach(render => render());
-                    })) : null, el('div', { class: 'amm-row' },
+                    el('small', { text: `${i + 1}. ${a?.name || 'Missing'}${a?.missing ? ' · Missing file' : ''}` }), el('div', { class: 'amm-row' },
                         iconButton('Move reference up', 'left', () => { [cfg.references[i - 1], cfg.references[i]] = [id, cfg.references[i - 1]]; this.presetChanged(space); refresh(); }, { disabled: !i }),
                         iconButton('Move reference down', 'right', () => { [cfg.references[i + 1], cfg.references[i]] = [id, cfg.references[i + 1]]; this.presetChanged(space); refresh(); }, { disabled: i === cfg.references.length - 1 }),
                         iconButton('Remove', 'clear', () => { cfg.references.splice(i, 1); this.presetChanged(space); refresh(); })));
@@ -610,7 +608,7 @@ export class Studio {
     chooseImage(title, pick, disabled = () => false) {
         const choose = id => { if (pick(id)) dialog.close(); else update(); };
         const project = el('div', { class: 'amm-asset-picker' });
-        const renderProject = () => project.replaceChildren(...this.project.assets.filter(a => !a.deleted && !a.missing).map(a => this.assetPickerItem(a, () => choose(a.id))));
+        const renderProject = () => project.replaceChildren(...this.project.assets.filter(a => !a.missing).map(a => this.assetPickerItem(a, () => choose(a.id))));
         const importImage = async (blob, filename) => {
             const form = new FormData(); form.append('image', blob, filename); form.append('kind', 'references'); form.append('name', filename.split('/').at(-1).replace(/\.[^.]+$/, ''));
             const projectId = this.project.id, asset = await request(`/projects/${projectId}/import`, form, 'POST');
@@ -691,7 +689,7 @@ export class Studio {
         const setThumb = () => host.style.setProperty('--amm-thumb', `${state.thumb || 185}px`); setThumb();
         let visible = [];
         const render = () => {
-            let assets = this.project.assets.filter(a => a.kind === kind && (state.filter === 'trash' ? a.deleted : !a.deleted));
+            let assets = this.project.assets.filter(a => a.kind === kind);
             const term = (state.search || '').toLowerCase(); assets = assets.filter(a => `${a.name} ${(a.tags || []).join(' ')}`.toLowerCase().includes(term));
             if (state.filter === 'originals') assets = assets.filter(a => !a.parent);
             if (state.filter === 'versions') assets = assets.filter(a => a.parent);
@@ -714,35 +712,26 @@ export class Studio {
                 addAction('Settings', 'info', () => this.assetSettings(a));
                 if (!['design', 'refine'].includes(space)) actions.append(this.referencePromptAction(a, space));
                 if (a.kind === 'references') actions.append(this.describeReferenceAction(a, space));
-                if (!a.deleted) {
-                    if (['references', 'panels'].includes(a.kind)) addAction('Draw with Klecks', 'pencil', () => openDrawing(this, a.kind, a));
-                    addAction('Upscale', 'wand', () => this.upscaleDialog(a));
-                    if (['references', 'panels'].includes(a.kind)) addAction('Use with Anima Ref', 'link', () => {
-                        this.state(a.kind).engine = 'anima_ref'; this.config(a.kind, 'anima_ref').references = [a.id];
-                        this.rebuild(a.kind); this.switch(a.kind); this.saveSoon();
-                    });
-                    if (space !== 'refine') addAction('Refine with Qwen', 'wand', () => { this.state('refine').source = a.id; this.saveSoon(); this.rebuild('refine'); this.switch('refine'); });
-                    if (space === 'refine') addAction('Use as original', 'image', () => { this.state('refine').source = a.id; this.saveSoon(); this.rebuild('refine'); });
-                    else if (space === 'design') addAction('Place', 'place', () => { if (!this.editor?.panel) this.editor.addPanel(); this.editor.change(() => this.editor.panel.asset = a.id); this.editor.loadImages(); });
-                    else addAction('Use as reference', 'link', () => {
-                        const cfg = this.config(space);
-                        if (!cfg.references.includes(a.id)) {
-                            const limit = referenceLimits[cfg.engine];
-                            if (!limit) { this.fail(new Error('Choose Anima Ref or Anima SnapRef to connect references.')); return; }
-                            if (cfg.references.length >= limit) { this.fail(new Error(`${engines[cfg.engine]} supports up to ${limit} references. Remove one before adding another.`)); return; }
-                            cfg.references.push(a.id); this.presetChanged(space);
-                        }
-                        this.saveSoon(); this.rebuild(space);
-                    });
-                }
-                addAction(a.deleted ? 'Restore' : 'Delete', a.deleted ? 'restore' : 'trash', () => {
-                    const update = async () => {
-                        await this.patchAssets({ [a.id]: { deleted: !a.deleted } });
-                        state.selection = state.selection.filter(id => id !== a.id);
-                        for (const refresh of this.galleryRefresh.values()) refresh();
-                    };
-                    if (a.deleted) this.action(update); else this.confirm(`Delete image · ${a.name}`, update);
-                }, !a.deleted);
+                if (['references', 'panels'].includes(a.kind)) addAction('Draw with Klecks', 'pencil', () => openDrawing(this, a.kind, a));
+                addAction('Upscale', 'wand', () => this.upscaleDialog(a));
+                if (['references', 'panels'].includes(a.kind)) addAction('Use with Anima Ref', 'link', () => {
+                    this.state(a.kind).engine = 'anima_ref'; this.config(a.kind, 'anima_ref').references = [a.id];
+                    this.rebuild(a.kind); this.switch(a.kind); this.saveSoon();
+                });
+                if (space !== 'refine') addAction('Refine with Qwen', 'wand', () => { this.state('refine').source = a.id; this.saveSoon(); this.rebuild('refine'); this.switch('refine'); });
+                if (space === 'refine') addAction('Use as original', 'image', () => { this.state('refine').source = a.id; this.saveSoon(); this.rebuild('refine'); });
+                else if (space === 'design') addAction('Place', 'place', () => { if (!this.editor?.panel) this.editor.addPanel(); this.editor.change(() => this.editor.panel.asset = a.id); this.editor.loadImages(); });
+                else addAction('Use as reference', 'link', () => {
+                    const cfg = this.config(space);
+                    if (!cfg.references.includes(a.id)) {
+                        const limit = referenceLimits[cfg.engine];
+                        if (!limit) { this.fail(new Error('Choose Anima Ref or Anima SnapRef to connect references.')); return; }
+                        if (cfg.references.length >= limit) { this.fail(new Error(`${engines[cfg.engine]} supports up to ${limit} references. Remove one before adding another.`)); return; }
+                        cfg.references.push(a.id); this.presetChanged(space);
+                    }
+                    this.saveSoon(); this.rebuild(space);
+                });
+                addAction('Delete', 'trash', () => this.confirm(`Delete image · ${a.name}`, () => this.deleteAssets([a.id]), deleteWarning), true);
                 card.dataset.assetId = a.id; this.assetContextMenu(card, actions); return card;
             }));
             if (!assets.length) grid.append(el('div', { class: 'amm-empty', text: 'This gallery is empty. Import images or generate your first result.' }));
@@ -756,12 +745,11 @@ export class Studio {
             ...Object.entries({ newest: 'Newest first', oldest: 'Oldest first', name: 'Name', order: 'Manual order' }).map(([value, text]) => el('option', { value, text }))); sort.value = state.sort;
         bar.append(sort, iconButton('Select visible', 'check', () => { state.selection = [...grid.querySelectorAll('article')].map(card => card.dataset.assetId); render(); this.saveSoon(); }),
             iconButton('Collapse gallery', 'collapse', () => { grid.hidden = !grid.hidden; pager.hidden = grid.hidden; state.collapsed = grid.hidden; this.saveSoon(); }),
-            segmented('Filter', Object.entries({ all: 'All', originals: 'Originals', versions: 'Versions', missing: 'Missing', trash: 'Trash' }), state.filter, value => { state.filter = value; state.page = 0; render(); this.saveSoon(); }),
+            segmented('Filter', Object.entries({ all: 'All', originals: 'Originals', versions: 'Versions', missing: 'Missing' }), state.filter, value => { state.filter = value; state.page = 0; render(); this.saveSoon(); }),
             el('input', { type: 'range', class: 'amm-thumb-size', min: 110, max: 340, step: 5, value: state.thumb || 185, 'aria-label': 'Thumbnail size', title: 'Thumbnail size',
                 oninput: e => { state.thumb = Number(e.target.value); setThumb(); }, onchange: () => this.saveSoon() }));
         selection.append(el('strong'), iconButton('Clear selection', 'clear', () => { state.selection = []; render(); this.saveSoon(); }),
-            iconButton('Remove selected', 'trash', () => this.confirm('Remove selected images', async () => { await this.patchAssets(Object.fromEntries(state.selection.map(id => [id, { deleted: true }]))); state.selection = []; render(); })),
-            iconButton('Restore selected', 'restore', () => this.action(async () => { await this.patchAssets(Object.fromEntries(state.selection.map(id => [id, { deleted: false }]))); render(); })),
+            iconButton('Delete selected', 'trash', () => this.confirm(`Delete ${state.selection.length} selected images`, () => this.deleteAssets(state.selection), deleteWarning)),
             iconButton('Assign selection order', 'order', () => this.action(async () => { await this.patchAssets(Object.fromEntries(state.selection.map((id, i) => [id, { order: i }]))); state.sort = 'order'; render(); })),
             iconButton('Tag selected', 'tags', () => this.ask('Comma-separated tags', '', async value => { await this.patchAssets(Object.fromEntries(state.selection.map(id => [id, { tags: value.split(',').map(x => x.trim()).filter(Boolean) }]))); render(); })));
         grid.hidden = !!state.collapsed; pager.hidden = grid.hidden;
@@ -772,6 +760,14 @@ export class Studio {
         }));
         host.append(bar, selection, pending, grid, pager); render(); renderPending(); this.galleryRefresh.set(space, render); this.pendingRefresh.set(space, renderPending);
         host.addEventListener('scroll', () => { state.scroll = host.scrollTop; this.saveSoon(); }, { passive: true, signal: this.abort.signal }); host.scrollTop = state.scroll || 0;
+    }
+    // Deletes the images and their files from disk, and drops them from every gallery selection.
+    async deleteAssets(ids) {
+        const id = this.project.id, result = await request(`/projects/${id}/assets`, { assets: ids }, 'DELETE');
+        if (id !== this.project.id) return;
+        this.project.assets = result.assets;
+        for (const space of Object.keys(this.project.workspace)) { const state = this.state(space); state.selection = (state.selection || []).filter(a => !ids.includes(a)); }
+        this.referenceRefresh.forEach(refresh => refresh()); this.galleryRefresh.forEach(refresh => refresh()); this.saveSoon();
     }
     async patchAssets(changes) {
         const id = this.project.id; const result = await request(`/projects/${id}/assets`, changes, 'PATCH');
@@ -839,7 +835,7 @@ export class Studio {
                 const project = this.project.id, editor = this.editor; const page = clone(editor.page); const blob = await editor.export();
                 const form = new FormData(); form.append('image', blob, `${page.name}.png`); form.append('kind', 'pages'); form.append('name', page.name);
                 form.append('sources', JSON.stringify(page.panels.map(p => p.asset).filter(Boolean))); form.append('metadata', JSON.stringify({ operation: 'composition', layout: page }));
-                const prior = this.project.assets.filter(a => a.metadata?.layout?.id === page.id && !a.deleted).sort((a, b) => b.created - a.created)[0]; if (prior) form.append('parent', prior.id);
+                const prior = this.project.assets.filter(a => a.metadata?.layout?.id === page.id).sort((a, b) => b.created - a.created)[0]; if (prior) form.append('parent', prior.id);
                 const asset = await request(`/projects/${project}/import`, form, 'POST');
                 if (this.project.id === project) this.project.assets.push(asset);
                 this.notify(`Composition saved: ${page.name}`);
@@ -882,11 +878,11 @@ export class Studio {
             // Control images are staged with the references and scene controls are rendered; a control without either is skipped.
             const controls = !textTask && ['references', 'panels'].includes(operation) ? (cfg.controls || []).filter(c => c.enabled && (c.image || c.scene)) : [];
             const ids = [...new Set([...references, ...controls.filter(c => c.image).map(c => c.image)])];
-            const unavailable = ids.find(id => !project.assets.some(a => a.id === id && !a.missing && !a.deleted));
+            const unavailable = ids.find(id => !project.assets.some(a => a.id === id && !a.missing));
             if (unavailable) {
                 const asset = project.assets.find(a => a.id === unavailable);
-                throw new Error(asset?.deleted ? `Selected image "${asset.name}" is in Trash. Restore it or remove it from the connected references or controls.`
-                    : `Selected image "${asset?.name || unavailable}" is missing. Reimport it and select it again, or remove it from the connected references or controls.`);
+                throw new Error(asset ? `Selected image "${asset.name}" is missing. Reimport it and select it again, or remove it from the connected references or controls.`
+                    : 'A connected reference or control image was deleted. Remove it from the connected references or controls.');
             }
             if (!textTask && references.length && cfg.size_mode !== 'manual') Object.assign(cfg, sizeSettings(project.assets.find(a => a.id === references[0])), { size_mode: 'original' });
             const paths = await request(`/projects/${project.id}/stage`, { assets: ids }, 'POST');
@@ -946,10 +942,10 @@ export class Studio {
     }
     // Qwen Image instruction editing of any project image, pages included; the result is a new version of the original.
     refine(view) {
-        const space = 'refine', state = this.state(space), source = this.project.assets.find(a => a.id === state.source && !a.deleted);
+        const space = 'refine', state = this.state(space), source = this.project.assets.find(a => a.id === state.source);
         const controls = el('aside', { class: 'amm-controls' }), preview = el('section', { class: 'amm-preview-area' });
         const select = el('select', { 'aria-label': 'Original image', onchange: e => { state.source = e.target.value; this.saveSoon(); this.rebuild(space); } }, el('option', { value: '', text: 'Select original…' }),
-            ...this.project.assets.filter(a => !a.deleted && !a.missing).map(a => el('option', { value: a.id, text: `${kindNames[a.kind]} · ${a.name} · v${a.version}` })));
+            ...this.project.assets.filter(a => !a.missing).map(a => el('option', { value: a.id, text: `${kindNames[a.kind]} · ${a.name} · v${a.version}` })));
         select.value = source?.id || '';
         const edit = editControls(this, 'refine', () => this.saveSoon(), false);
         controls.append(el('h2', { text: 'Refinement · Qwen' }), el('small', { text: 'Edit a reference, panel or page with a Qwen Image instruction. The result is saved as a new version of the original.' }),
@@ -961,8 +957,8 @@ export class Studio {
     // The original next to its latest refinement.
     comparison(host) {
         host.querySelector('.amm-comparison')?.remove();
-        const source = this.project.assets.find(a => a.id === this.state('refine').source && !a.deleted);
-        const result = source && this.project.assets.filter(a => a.parent === source.id && a.metadata?.operation === 'refine' && !a.deleted).sort((a, b) => b.created - a.created)[0];
+        const source = this.project.assets.find(a => a.id === this.state('refine').source);
+        const result = source && this.project.assets.filter(a => a.parent === source.id && a.metadata?.operation === 'refine').sort((a, b) => b.created - a.created)[0];
         const shell = el('div', { class: 'amm-comparison' });
         if (!source) shell.append(el('div', { class: 'amm-empty', text: 'Select an original image from your project, or choose Refine with Qwen in an image menu.' }));
         else {
@@ -1042,7 +1038,7 @@ export class Studio {
                 // A pending local edit is saved first; its revision conflict reloads the project.
                 if (this.project === project && data.revision > project.revision && this.status.dataset.save !== 'pending') { await (this.saving = this.saving.then(() => this.reload())); return; }
             }
-            const added = JSON.stringify(data.assets.map(a => [a.id,a.missing,a.deleted,a.name,a.metadata?.description_prompt])) !== JSON.stringify(project.assets.map(a => [a.id,a.missing,a.deleted,a.name,a.metadata?.description_prompt]));
+            const added = JSON.stringify(data.assets.map(a => [a.id,a.missing,a.name,a.metadata?.description_prompt])) !== JSON.stringify(project.assets.map(a => [a.id,a.missing,a.name,a.metadata?.description_prompt]));
             for (const job of data.jobs) {
                 const prior = project.jobs.find(j => j.id === job.id);
                 if (job.state === 'error' && prior?.state !== 'error') this.fail(new Error(`${textTasks[job.operation] || (job.operation === 'sketch' ? 'Sketch to Art' : job.operation === 'manga' ? 'Art to Manga Panel' : spaces[job.operation] || job.name)} · ${job.engine}: ${typeof job.error === 'string' ? job.error : JSON.stringify(job.error)}`));
@@ -1095,7 +1091,7 @@ export class Studio {
                 : references !== null && (references < 1 || references > limit) ? `Connect one to ${limit === 4 ? 'four' : 'eight'} references.`
                 : run in textTasks && !this.textGeneratorAvailable() ? 'Configure the global text generator in Settings.'
                 : run in textTasks && this.project.jobs.some(j => j.operation === run && ['registered', 'queued', 'running'].includes(j.state)) ? 'A text generation is already running.'
-                : run === 'describe' && !this.project.assets.some(a => a.id === b.dataset.textSource && !a.deleted && !a.missing) ? 'The source image is unavailable.' : '';
+                : run === 'describe' && !this.project.assets.some(a => a.id === b.dataset.textSource && !a.missing) ? 'The source image is unavailable.' : '';
             b.disabled = !!reason;
             const hint = b.closest('.amm-run-bar')?.querySelector('.amm-run-hint'); if (hint) hint.textContent = reason;
         }

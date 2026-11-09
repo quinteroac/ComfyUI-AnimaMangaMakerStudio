@@ -331,7 +331,7 @@ try {
     }, { projectId: backend.project, projectData }); assert.equal(pixelsMatch, true);
 
     await studio.getByRole('button', { name: 'References', exact: true }).click();
-    for (const space of ['Refinement', 'Finishing']) assert.equal(await studio.getByRole('navigation', { name: 'Workspaces' }).getByRole('button', { name: space, exact: true }).count(), 0);
+    assert.equal(await studio.getByRole('navigation', { name: 'Workspaces' }).getByRole('button', { name: 'Finishing', exact: true }).count(), 0);
     await studio.locator('.amm-references .amm-controls > .amm-field select').first().selectOption('anima_ref');
     const refView = studio.locator('.amm-references');
     await assetAction(refView.locator(`.amm-asset[data-asset-id="${generatedReference}"]`), 'Use image prompt');
@@ -372,18 +372,11 @@ try {
     await assetAction(deleteCard, 'Delete', true);
     await studio.getByRole('dialog', { name: /^Delete image ·/ }).getByRole('button', { name: 'Confirm', exact: true }).click();
     await page.waitForFunction(id => !document.querySelector(`.amm-references .amm-asset[data-asset-id="${id}"]`), deletedId);
+    // Delete is permanent: the image leaves the project and its file the disk; a connection to it shows as missing until removed.
     const deletedConnection = refView.locator(`.amm-reference-strip > [data-asset-id="${deletedId}"]`);
-    assert.match(await deletedConnection.innerText(), /Trash/);
-    assert.equal(await deletedConnection.getByRole('button', { name: 'Restore reference', exact: true }).count(), 1);
-    await choose(refView, 'Filter', 'trash');
-    const trashCard = refView.locator(`.amm-asset[data-asset-id="${deletedId}"]`); await trashCard.waitFor();
-    await deletedConnection.getByRole('button', { name: 'Restore reference', exact: true }).click();
-    await trashCard.waitFor({ state: 'detached' });
-    assert.doesNotMatch(await deletedConnection.innerText(), /Trash/);
-    await choose(refView, 'Filter', 'all');
-    await refView.locator(`.amm-asset[data-asset-id="${deletedId}"]`).waitFor();
-    const restoredAsset = (await (await fetch(`${backend.url}/anima-manga-maker/projects/${backend.project}`)).json()).assets.find(a => a.id === deletedId);
-    assert.equal(restoredAsset.deleted, false);
+    assert.match(await deletedConnection.innerText(), /Missing/);
+    assert(!(await (await fetch(`${backend.url}/anima-manga-maker/projects/${backend.project}`)).json()).assets.some(a => a.id === deletedId));
+    assert.notEqual((await fetch(`${backend.url}/anima-manga-maker/projects/${backend.project}/assets/${deletedId}`)).status, 200, 'The image file is gone');
     await deletedConnection.getByRole('button', { name: 'Remove', exact: true }).click();
     await studio.getByRole('navigation', { name: 'Workspaces' }).getByRole('button', { name: 'Story', exact: true }).click();
 

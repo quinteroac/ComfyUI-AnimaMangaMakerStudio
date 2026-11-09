@@ -6,7 +6,7 @@ import readline from 'node:readline';
 // A minimal stand-in for the Studio routes the MCP server reads and writes.
 const id = 'a'.repeat(32), asset = 'b'.repeat(32);
 const project = { id, name: 'Kitsune', updated: 1, revision: 0, workspace: { design: { pages: [{ id: 'p1', name: 'Page 1' }] } }, jobs: [], story: {},
-    assets: [{ id: asset, kind: 'references', name: 'Aiko', width: 80, height: 120, version: 1, parent: null, deleted: false, missing: false, metadata: {} }] };
+    assets: [{ id: asset, kind: 'references', name: 'Aiko', width: 80, height: 120, version: 1, parent: null, missing: false, metadata: {} }] };
 let externalEdit = false;
 const server = http.createServer(async (request, response) => {
     let body = ''; for await (const chunk of request) body += chunk;

@@ -56,7 +56,7 @@ export class StoryStudio {
         return field(label, input);
     }
     pick(title, kinds, chosen) {
-        const picker = el('div', { class: 'amm-asset-picker' }, ...this.studio.project.assets.filter(a => kinds.includes(a.kind) && !a.deleted && !a.missing)
+        const picker = el('div', { class: 'amm-asset-picker' }, ...this.studio.project.assets.filter(a => kinds.includes(a.kind) && !a.missing)
             .map(a => this.studio.assetPickerItem(a, () => { chosen(a.id); dialog.close(); this.changed(); this.render(); })));
         if (!picker.children.length) picker.append(el('p', { text: 'No available images. Generate or import them first.' }));
         const dialog = this.studio.modal(title, picker);
@@ -66,7 +66,7 @@ export class StoryStudio {
         const image = asset && !asset.missing ? button('', () => this.studio.preview(asset), { class: 'amm-story-thumb-image', 'aria-label': `Preview ${asset.name}`, title: asset.name }) : el('span', { class: 'amm-story-thumb-image', text: asset ? 'Missing file' : 'Removed' });
         if (asset && !asset.missing) image.append(el('img', { src: assetUrl(this.studio.project.id, id, !large), alt: asset.name, loading: 'lazy' }));
         return el('figure', { class: `amm-story-thumb${large ? ' amm-story-thumb-large' : ''}` }, image,
-            el('figcaption', { text: `${label}${asset ? ` · ${asset.name}` : ''}${asset?.deleted ? ' · Trash' : ''}`, title: asset?.name || '' }), el('div', { class: 'amm-row' }, ...actions));
+            el('figcaption', { text: `${label}${asset ? ` · ${asset.name}` : ''}`, title: asset?.name || '' }), el('div', { class: 'amm-row' }, ...actions));
     }
     replace(title, text, action, label = 'Replace') {
         const dialog = this.studio.modal(title, el('p', { text }), button('Cancel', () => dialog.close()), button(label, () => { dialog.close(); action(); }, { class: 'amm-danger' }));
@@ -192,7 +192,7 @@ export class StoryStudio {
         });
         body.append(iconButton('Add panel', 'plus', () => { page.panels.push(newPanel()); this.changed(); this.render(); }, {}, true));
     }
-    available(id) { return this.studio.project.assets.some(a => a.id === id && !a.deleted && !a.missing); }
+    available(id) { return this.studio.project.assets.some(a => a.id === id && !a.missing); }
     toReferences(c) {
         const cfg = this.studio.config('references'), style = cfg.prompt_sections?.style?.trim();
         cfg.prompt_sections = { ...referencePresets.Character.prompt_sections, subject: [c.name, c.role].filter(Boolean).join(', '),
