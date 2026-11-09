@@ -89,14 +89,16 @@ export class Studio {
         const source = this.config('style', 'anima'), shared = {};
         if (source.loras.some(l => l.enabled)) shared.loras = source.loras.filter(l => l.enabled);
         if (source.artist_chain?.trim()) Object.assign(shared, { artist_chain: source.artist_chain, artist_strength: source.artist_strength });
-        if (source.tag_sliders?.enabled) shared.tag_sliders = source.tag_sliders;
+        if (source.tag_sliders?.enabled) shared.style_tag_sliders = source.tag_sliders;
         for (const key of ['encoder', 'encoder_type', 'vae', 'weight_dtype']) if (key in source.model_overrides) shared[key] = source.model_overrides[key];
         return clone(shared);
     }
     // The operation's settings with the global LoRAs and, unless the operation overrides it, the project style.
     // LoRAs run global, then style, then the operation's own; a file listed twice keeps its first entry.
+    // Style tag sliders chain before the operation's own; the Style preview has them only once.
     styled(cfg) {
         const { loras = [], ...shared } = cfg.style_override ? {} : this.styleSettings(), style = !cfg.style_override && this.projectStyle();
+        if (JSON.stringify(shared.style_tag_sliders) === JSON.stringify(cfg.tag_sliders)) delete shared.style_tag_sliders;
         const all = [...clone((this.settings.loras || []).filter(l => l.enabled)), ...loras, ...(cfg.loras || [])];
         return { ...cfg, ...shared, loras: all.filter((l, i) => all.findIndex(o => o.name === l.name) === i), ...(style ? { prompt_sections: { ...cfg.prompt_sections, style } } : {}) };
     }

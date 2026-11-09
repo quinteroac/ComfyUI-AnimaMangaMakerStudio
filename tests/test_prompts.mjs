@@ -284,6 +284,14 @@ for (const engine of ['anima', 'anima_ref', 'anima_snapref']) {
         const bypassed = buildPrompt(missing, 'panels', engine, cfg, images, 'bypass');
         assert(!Object.values(bypassed.graph).some(n => n.class_type === 'AnimaTagSliders'));
     }
+    // Project style sliders and the operation's own chain, style first, each with its own mode.
+    const style = { enabled: true, tags: 'fisheye#4', values: { 'fisheye#4': 3 }, mode: 'weight_norm' };
+    const own = { enabled: true, tags: 'big eyes', values: { 'big eyes': -2 }, mode: 'guidance' };
+    const chained = buildPrompt(defs, 'panels', engine, configFor(engine, { style_tag_sliders: style, tag_sliders: own }), engine === 'anima' ? [] : ['reference.png'], 'chained');
+    const sliders = Object.entries(chained.graph).filter(([, n]) => n.class_type === 'AnimaTagSliders');
+    assert.deepEqual(sliders.map(([, n]) => n.inputs.tags), ['fisheye#4', 'big eyes']);
+    assert.deepEqual(sliders.map(([, n]) => n.inputs.mode), ['weight_norm', 'guidance']);
+    assert.deepEqual(sliders[1][1].inputs.model, [sliders[0][0], 0]);
 }
 
 if (process.argv[3]) fs.writeFileSync(process.argv[3], JSON.stringify(jobs));
