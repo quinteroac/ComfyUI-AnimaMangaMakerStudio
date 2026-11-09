@@ -152,6 +152,26 @@ try {
     const scale = Object.values(graph).find(n => n.class_type === 'ImageScale').inputs; assert(scale.width * scale.height > 1.8e6 && scale.width === scale.height, 'Square panel to about 2 MP');
     const version = (await project()).assets.find(a => a.parent === panel.id && a.metadata?.operation === 'upscale');
     assert.equal(version.kind, 'panels'); assert.equal(version.version, panel.version + 1);
+
+    // Refinement: Qwen instruction editing of the panel, saved as a new version and shown next to the original.
+    await studio.locator(`.amm-panels .amm-asset[data-asset-id="${panel.id}"]`).getByRole('button', { name: 'Image actions', exact: true }).click();
+    await studio.locator(`.amm-panels .amm-asset[data-asset-id="${panel.id}"]`).getByRole('menuitem', { name: 'Refine with Qwen', exact: true }).click();
+    const refineView = studio.locator('.amm-refine');
+    assert.equal(await refineView.getByLabel('Original image', { exact: true }).inputValue(), panel.id);
+    await refineView.getByLabel('Prompt and settings preset', { exact: true }).selectOption('Clean lines');
+    await refineView.locator('summary').filter({ hasText: 'Qwen models' }).click();
+    for (const [label, node, key] of [['Diffusion model', 'UNETLoader', 'unet_name'], ['Text encoder · Qwen3-VL', 'CLIPLoader', 'clip_name'], ['VAE', 'VAELoader', 'vae_name']]) {
+        await refineView.getByLabel(label, { exact: true }).fill(options(defs, node, key)[0]); await refineView.getByLabel(label, { exact: true }).press('Tab');
+    }
+    await refineView.getByRole('button', { name: 'Refine image', exact: true }).click();
+    // waitForFunction treats a returned promise as truthy, so the import is polled from here.
+    for (let i = 0; i < 60 && !(await project()).assets.some(a => a.parent === panel.id && a.metadata?.operation === 'refine'); i++) await page.waitForTimeout(500);
+    graph = queued.at(-1).prompt;
+    assert(Object.values(graph).find(n => n.class_type === 'TextEncodeQwenImage21').inputs.prompt.startsWith('Clean up <image1>'));
+    assert(Object.values(graph).find(n => n.class_type === 'LoadImage').inputs.image.endsWith(`${panel.id}.png`), 'The original is staged for Qwen');
+    const refined = (await project()).assets.find(a => a.parent === panel.id && a.metadata?.operation === 'refine');
+    assert.equal(refined.kind, 'panels');
+    await refineView.locator('.amm-compare-images figcaption').filter({ hasText: 'Result' }).waitFor({ timeout: 15000 });
     await studio.getByRole('button', { name: 'Back to ComfyUI', exact: true }).click();
     const graphAfter = await page.evaluate(() => window.comfyAPI.app.app.graph.serialize());
     delete graphBefore.extra.k2cf_state_id; delete graphAfter.extra.k2cf_state_id; assert.deepEqual(graphAfter, graphBefore);

@@ -92,7 +92,7 @@ try {
     await choose(dialog.getByRole('complementary', { name: 'Sketch to Art controls', exact: true }), 'Drawing workflow', 'inpaint');
     const controls = dialog.getByRole('complementary', { name: 'Inpaint controls', exact: true });
     await controls.locator('summary').filter({ hasText: 'Models and advanced settings' }).first().click();
-    for (const [label, node, key] of [['Diffusion model', 'UNETLoader', 'unet_name'], ['Text encoder', 'CLIPLoader', 'clip_name'], ['VAE', 'VAELoader', 'vae_name']]) {
+    for (const [label, node, key] of [['Text encoder', 'CLIPLoader', 'clip_name'], ['VAE', 'VAELoader', 'vae_name']]) {
         await controls.getByLabel(label, { exact: true }).first().fill(options(defs, node, key)[0]); await controls.getByLabel(label, { exact: true }).first().press('Tab');
     }
     const generate = controls.getByRole('button', { name: 'Generate Inpaint', exact: true }); await generate.waitFor();
@@ -139,6 +139,22 @@ try {
     const saved = (await project()).assets.find(a => a.name === 'Inpaint test');
     const first = await pixels(saved);
     assert.equal(first.dark, 0, 'Mask and control strokes are not in the saved PNG'); assert(first.result > 10, `The repainted area is: ${JSON.stringify(first)}`);
+
+    // SnapRef inpainting: the masked figure is drawn as the character in the connected references, which are staged with the job.
+    await choose(controls, 'Inpaint engine', 'anima_snapref');
+    await controls.getByRole('button', { name: 'Choose references', exact: true }).click();
+    const picker = studio.getByRole('dialog', { name: 'Connect references', exact: true });
+    await picker.locator(`.amm-asset-picker > button[data-asset-id="${saved.id}"]`).click();
+    await picker.getByRole('button', { name: 'Close', exact: true }).click();
+    await controls.locator(`.amm-reference-strip [data-asset-id="${saved.id}"]`).waitFor();
+    await generate.click();
+    await controls.getByText('AI layer added · Save to project to preserve it.', { exact: true }).waitFor({ timeout: 30000 });
+    const snap = queued.at(-1).prompt, snapNode = Object.values(snap).find(n => n.class_type === 'SnapRefSimple');
+    assert(snapNode.inputs.reference.endsWith(`${saved.id}.png`), 'The reference is staged for SnapRef');
+    assert(Object.values(snap).some(n => n.class_type === 'SetLatentNoiseMask'));
+    const snapJob = (await project()).jobs.at(-1);
+    assert.equal(snapJob.engine, 'anima_snapref'); assert.equal(snapJob.settings.task, 'inpaint');
+    await choose(controls, 'Inpaint engine', 'anima');
 
     // Outpaint: extending reopens the drawing with transparent margins, which are filled with the mask.
     await choose(controls, 'Task', 'outpaint');

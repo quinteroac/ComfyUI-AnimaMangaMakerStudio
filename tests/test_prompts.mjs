@@ -68,23 +68,33 @@ for (const [op, images] of [['references', ['a.png']], ['panels', ['a.png', 'b.p
     jobs.push({ engine: 'anima_ref', op, count: images.length, ...built });
 }
 
-// Anima SnapRef: one to three pictures of one character on the SnapRef node, then the plain KSampler.
+// Anima SnapRef: up to eight pictures of one character on the simple node; different characters stitched on the advanced node; then the plain KSampler.
 const snapref = configFor('anima_snapref', { prompt: '1girl, walking, city street', aspect_ratio: '3:4', model_overrides: { snapref_mode: 'cs', snapref_strength: .5, snapref_fidelity: .8 } });
 assert.throws(() => buildPrompt(defs, 'panels', 'anima_snapref', snapref, [], 'snapref'), /at least one reference/);
-assert.throws(() => buildPrompt(defs, 'panels', 'anima_snapref', snapref, ['a.png', 'b.png', 'c.png', 'd.png'], 'snapref'), /up to 3/);
-for (const images of [['a.png'], ['a.png', 'b.png', 'c.png']]) {
+assert.throws(() => buildPrompt(defs, 'panels', 'anima_snapref', snapref, [...'abcdefghi'].map(c => `${c}.png`), 'snapref'), /up to 8/);
+assert.throws(() => buildPrompt(defs, 'panels', 'anima_snapref', { ...snapref, snapref_layout: 'stitch' }, ['a.png', 'b.png', 'c.png', 'd.png'], 'snapref'), /up to three/);
+for (const images of [['a.png'], [...'abcdefgh'].map(c => `${c}.png`)]) {
     const built = buildPrompt(defs, 'panels', 'anima_snapref', snapref, images, 'snapref'), graph = built.graph;
-    const [id, node] = Object.entries(graph).find(([, n]) => n.class_type === 'SnapRef');
-    assert.deepEqual(['image', 'image_2', 'image_3'].filter(key => node.inputs[key]).map(key => graph[node.inputs[key][0]].inputs.image), images);
-    assert.equal(node.inputs.mode, 'cs'); assert.equal(node.inputs.strength, .5); assert.equal(node.inputs.fidelity, .8);
-    assert.equal(node.inputs.multi_layout, 'separate');
-    assert.equal(buildPrompt(defs, 'panels', 'anima_snapref', { ...snapref, snapref_layout: 'stitch' }, images, 'snapref').graph[id].inputs.multi_layout, 'stitch');
+    const [id, node] = Object.entries(graph).find(([, n]) => n.class_type === 'SnapRefSimple');
+    assert.deepEqual(['reference', ...images.slice(1).map((_, i) => `reference_${i + 2}`)].map(key => node.inputs[key]), images);
+    assert.equal(node.inputs.mode, 'Character & Style'); assert.equal(node.inputs.fidelity, .8);
+    assert.equal(node.inputs.strength, Math.exp(.5)); if (images.length > 1) assert.equal(node.inputs.strength_8, Math.exp(.5));
+    assert(!Object.values(graph).some(n => n.class_type === 'LoadImage'), 'The simple node loads its pictures itself');
     const sampler = Object.values(graph).find(n => n.class_type === 'KSampler');
     assert.equal(sampler.inputs.sampler_name, 'euler');
     let model = sampler.inputs.model; while (model[0] !== id) model = graph[model[0]].inputs.model;
-    assert(!Object.values(graph).some(n => ['AnimaRefGuider', 'ImageStitch', 'AnimaSafePAG'].includes(n.class_type)));
+    assert(!Object.values(graph).some(n => ['AnimaRefGuider', 'ImageStitch', 'AnimaSafePAG', 'SnapRef'].includes(n.class_type)));
     jobs.push({ engine: 'anima_snapref', op: 'panels', count: images.length, ...built });
 }
+for (const images of [['a.png'], ['a.png', 'b.png', 'c.png']]) {
+    const built = buildPrompt(defs, 'panels', 'anima_snapref', { ...snapref, snapref_layout: 'stitch' }, images, 'snapref'), graph = built.graph;
+    const node = Object.values(graph).find(n => n.class_type === 'SnapRef');
+    assert.deepEqual(['image', 'image_2', 'image_3'].filter(key => node.inputs[key]).map(key => graph[node.inputs[key][0]].inputs.image), images);
+    assert.equal(node.inputs.mode, 'cs'); assert.equal(node.inputs.strength, .5); assert.equal(node.inputs.fidelity, .8);
+    assert.equal(node.inputs.multi_layout, 'stitch'); assert.equal(node.inputs.ref_megapixels, Math.min(2, images.length));
+    jobs.push({ engine: 'anima_snapref', op: 'panels', count: images.length, ...built });
+}
+assert.equal(Object.values(buildPrompt(defs, 'panels', 'anima_snapref', { ...snapref, snapref_strength: 3 }, ['a.png'], 'x').graph).find(n => n.class_type === 'SnapRefSimple').inputs.strength, 2);
 
 // LLLite controls follow the LoRAs and come before the reference adapter; the Ref Adapter needs the CharRef-LLLite variants.
 const patches = options(defs, 'ModelPatchLoader', 'name').filter(name => name.startsWith('anima_'));
@@ -92,7 +102,7 @@ const controls = [{ enabled: true, patch: patches[0], image_path: 'pose.png', st
     { enabled: true, patch: patches[1] || patches[0], image_path: 'regions.png', strength: 1, start: 0, end: .3 },
     { enabled: false, patch: patches[0], image_path: 'off.png', strength: 1, start: 0, end: 1 }, { enabled: true, patch: patches[0], image: 'unstaged', strength: 1, start: 0, end: 1 }];
 const lora = options(defs, 'LoraLoaderModelOnly', 'lora_name')[0];
-for (const [engine, images, apply, loader] of [['anima', [], 'AnimaLLLiteApply', null], ['anima_snapref', ['a.png'], 'AnimaLLLiteApply', 'SnapRef'],
+for (const [engine, images, apply, loader] of [['anima', [], 'AnimaLLLiteApply', null], ['anima_snapref', ['a.png'], 'AnimaLLLiteApply', 'SnapRefSimple'],
     ['anima_ref', ['a.png'], 'ExperimentalAnimaLLLiteRefApply', 'ExperimentalAnimaRefAdapterControlsLoader']]) {
     const built = buildPrompt(defs, 'panels', engine, { ...configFor(engine, { prompt: 'x' }), controls, loras: [{ name: lora, model: .5, enabled: true }] }, images, 'controls'), graph = built.graph;
     const applied = Object.entries(graph).filter(([, n]) => n.class_type === apply);
@@ -136,7 +146,19 @@ for (const [type, { patch, strength, start, end }] of Object.entries(controlType
         assert.equal(graph[built.outputNode].class_type, 'PreviewImage');
         jobs.push({ engine: 'anima', op: 'inpaint', count: 0, ...built });
     }
-    assert.throws(() => buildPrompt(defs, 'inpaint', 'anima_ref', { ...configFor('anima_ref', { prompt: 'x' }), inpaint: { image_path: 'a', mask_path: 'b' } }, ['a.png'], 'x'), /Anima engine/);
+    assert.throws(() => buildPrompt(defs, 'inpaint', 'anima_ref', { ...configFor('anima_ref', { prompt: 'x' }), inpaint: { image_path: 'a', mask_path: 'b' } }, ['a.png'], 'x'), /Anima or SnapRef/);
+    // SnapRef inpainting: the masked figure is drawn as the character in the references, after the inpainting LLLite.
+    const snap = { ...configFor('anima_snapref', { prompt: '1girl, standing' }), aspect_ratio: '300:420', megapixels: 1, denoise: 1 };
+    const inpaint = { image_path: 'crop.png', mask_path: 'mask.png', patch: inpaintPatch, strength: 1 };
+    const built = buildPrompt(defs, 'inpaint', 'anima_snapref', { ...snap, inpaint }, ['elaine.png', 'elaine-full.png'], 'inpaint-snapref'), graph = built.graph;
+    const [snapId, snapNode] = Object.entries(graph).find(([, n]) => n.class_type === 'SnapRefSimple');
+    assert.deepEqual([snapNode.inputs.reference, snapNode.inputs.reference_2], ['elaine.png', 'elaine-full.png']);
+    assert.equal(graph[snapNode.inputs.model[0]].class_type, 'AnimaLLLiteApply');
+    const sampler = Object.values(graph).find(n => n.class_type === 'KSampler');
+    assert.equal(graph[sampler.inputs.latent_image[0]].class_type, 'SetLatentNoiseMask');
+    let model = sampler.inputs.model; while (model[0] !== snapId) model = graph[model[0]].inputs.model;
+    jobs.push({ engine: 'anima_snapref', op: 'inpaint', count: 2, ...built });
+    assert.throws(() => buildPrompt(defs, 'inpaint', 'anima_snapref', { ...snap, inpaint }, [], 'x'), /SnapRef requires at least one reference/);
 }
 
 // Redraw and upscale extract the structure from the source inside the graph and feed it to the mode's LLLite.

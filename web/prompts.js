@@ -97,8 +97,8 @@ export function options(defs, node, field) {
     return Array.isArray(spec?.[0]) ? spec[0] : spec?.[1]?.options || [];
 }
 
-// Reference engines and how many pictures each takes: Anima Ref stitches up to four, SnapRef takes up to three.
-export const referenceLimits = { anima_ref: 4, anima_snapref: 3 };
+// Reference engines and how many pictures each takes: Anima Ref stitches up to four, SnapRef takes up to eight of one character.
+export const referenceLimits = { anima_ref: 4, anima_snapref: 8 };
 
 // Starting values per LLLite type, from the November 2026 benchmark on Anima Turbo and mangaVision (VALIDATION.md).
 // `background` fills the transparent parts of a Klecks control layer before it is sent.
@@ -173,7 +173,7 @@ export const initialSettings = (engine) => ({
     ...(referenceLimits[engine] ? { sampler: 'euler', scheduler: 'simple',
         negative: 'worst quality, low quality, score_1, score_2, score_3, blurry, jpeg artifacts, chromatic aberration, bad anatomy, bad hands, extra arms, extra fingers, missing fingers, text, watermark, signature, artist name, multiple views, split screen, comic, 2koma, 4koma' } : {}),
     ...(engine === 'anima_ref' ? { ref_adapter_lora: 'anima_ref_adapter_v2_r64.safetensors', ref_guidance: 1, pag_scale: 1.3 } : {}),
-    ...(engine === 'anima_snapref' ? { snapref_adapter: 'snapref_v2a_pre2.safetensors', snapref_mode: 'char', snapref_strength: 0, snapref_fidelity: 1 } : {}),
+    ...(engine === 'anima_snapref' ? { snapref_adapter: 'snapref_v2a.safetensors', snapref_mode: 'char', snapref_strength: 0, snapref_fidelity: 1 } : {}),
 });
 
 export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) {
@@ -195,7 +195,8 @@ export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) 
     const load = (name, type) => add('CLIPLoader', {
         clip_name: check('CLIPLoader', 'clip_name', name, 'Encoder'), type: check('CLIPLoader', 'type', type, 'Encoder type'), device: config.encoder_device,
     });
-    const images = imagePaths.map(image => add('LoadImage', { image }));
+    // SnapRef with one character loads its pictures itself.
+    const images = engine === 'anima_snapref' && config.snapref_layout !== 'stitch' && !['enhance', 'describe'].includes(operation) ? [] : imagePaths.map(image => add('LoadImage', { image }));
     if (operation === 'enhance' || operation === 'describe') {
         if (operation === 'describe' && !images.length) throw new Error('Select a reference to analyze.');
         const clip = load(config.encoder, config.encoder_type);
@@ -218,9 +219,9 @@ export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) 
     const clip = load(config.encoder, config.encoder_type);
     const vae = add('VAELoader', { vae_name: check('VAELoader', 'vae_name', config.vae, 'VAE') });
     const limit = referenceLimits[engine];
-    if (limit && !images.length) throw new Error(`${engine === 'anima_ref' ? 'Anima Ref' : 'SnapRef'} requires at least one reference image.`);
-    if (limit && images.length > limit) throw new Error(`${engine === 'anima_ref' ? 'Anima Ref' : 'SnapRef'} supports up to ${limit} reference images.`);
-    if (!limit && images.length) throw new Error('This workflow generates from text. Use Anima Ref or SnapRef to connect visual references.');
+    if (limit && !imagePaths.length) throw new Error(`${engine === 'anima_ref' ? 'Anima Ref' : 'SnapRef'} requires at least one reference image.`);
+    if (limit && imagePaths.length > limit) throw new Error(`${engine === 'anima_ref' ? 'Anima Ref' : 'SnapRef'} supports up to ${limit} reference images.`);
+    if (!limit && imagePaths.length) throw new Error('This workflow generates from text. Use Anima Ref or SnapRef to connect visual references.');
     // Chain order follows the CharRef-LLLite workflows: LoRAs, LLLite controls, then the reference adapter.
     for (const lora of config.loras.filter(l => l.enabled)) {
         model = add('LoraLoaderModelOnly', { model, lora_name: check('LoraLoaderModelOnly', 'lora_name', lora.name, 'LoRA'), strength_model: Number(lora.model) });
@@ -245,7 +246,7 @@ export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) 
     }
     if (operation === 'inpaint') {
         // Masked image-to-image on the staged crop: the inpainting LLLite sees the image outside the mask, and only the mask is denoised.
-        if (engine !== 'anima') throw new Error('Inpainting uses the Anima engine.');
+        if (!['anima', 'anima_snapref'].includes(engine)) throw new Error('Inpainting uses Anima or SnapRef.');
         const pixels = add('ImageScale', { image: add('LoadImage', { image: config.inpaint.image_path }), upscale_method: 'lanczos', ...size, crop: 'disabled' });
         const mask = add('ImageToMask', { image: add('LoadImage', { image: config.inpaint.mask_path }), channel: 'red' });
         if (config.inpaint.patch) model = add('AnimaLLLiteApply', { model, model_patch: add('ModelPatchLoader', { name: check('ModelPatchLoader', 'name', config.inpaint.patch, 'Inpainting model') }),
@@ -262,12 +263,20 @@ export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) 
         const loader = controls.length ? 'ExperimentalAnimaRefAdapterControlsLoader' : 'AnimaRefAdapterLoader';
         model = add(loader, { model, lora_name: check(loader, 'lora_name', config.ref_adapter_lora, 'Ref Adapter LoRA'), strength: 1, ref_offset_h: 1 });
     }
-    if (engine === 'anima_snapref') {
-        // SnapRef merges separate pictures into one character; different characters go side by side in one stitched reference.
+    if (engine === 'anima_snapref' && config.snapref_layout === 'stitch') {
+        // Different characters go side by side in one stitched reference, about one megapixel each as Anima Ref encodes its stitch at the panel size.
+        if (images.length > 3) throw new Error('Different characters takes up to three pictures.');
         model = add('SnapRef', { model, clip, vae, ...Object.fromEntries(images.map((image, i) => [['image', 'image_2', 'image_3'][i], image])),
-            adapter: check('SnapRef', 'adapter', config.snapref_adapter, 'SnapRef adapter'), mode: config.snapref_mode, ref_in_uncond: false, ref_megapixels: 1,
+            adapter: check('SnapRef', 'adapter', config.snapref_adapter, 'SnapRef adapter'), mode: config.snapref_mode, ref_in_uncond: false, ref_megapixels: Math.min(2, images.length),
             strength: Number(config.snapref_strength), ref_caption: '', ref_guidance_on: false, ref_guidance: 4.5, correction: 'apg', ref_end: 1,
-            use_batch: false, multi_layout: config.snapref_layout === 'stitch' ? 'stitch' : 'separate', weight_1: 1, weight_2: 1, weight_3: 1, fidelity: Number(config.snapref_fidelity) });
+            use_batch: false, multi_layout: 'stitch', weight_1: 1, weight_2: 1, weight_3: 1, fidelity: Number(config.snapref_fidelity) });
+    } else if (engine === 'anima_snapref') {
+        // Up to eight pictures of one character, merged into one identity. The simple node reads them from the input folder;
+        // its per-picture strength w adds log(w) to the reference logits, so the attention offset s becomes w = e^s (the node caps it at 2).
+        const weight = Math.min(2, Math.exp(Number(config.snapref_strength)));
+        model = add('SnapRefSimple', { model, clip, vae, adapter: check('SnapRefSimple', 'adapter', config.snapref_adapter, 'SnapRef adapter'),
+            mode: config.snapref_mode === 'cs' ? 'Character & Style' : 'Character', fidelity: Number(config.snapref_fidelity),
+            ...Object.fromEntries(imagePaths.flatMap((image, i) => i ? [[`reference_${i + 1}`, image], [`strength_${i + 1}`, weight]] : [['reference', image], ['strength', weight]])) });
     }
     if (limit) model = add('ModelComputeDtype', { model, dtype: 'bf16' });
     const attention = config.attention || defaultAttention(defs, engine);

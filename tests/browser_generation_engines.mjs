@@ -57,7 +57,7 @@ try {
         assert.deepEqual(await view.getByLabel('Engine', { exact: true }).locator('option').evaluateAll(options => options.map(o => o.value)), ['anima', 'anima_ref', 'anima_snapref']);
         assert.equal(await view.getByText('Connected visual references', { exact: true }).count(), 0);
         await view.locator('summary').filter({ hasText: /^Models and advanced settings$/ }).click();
-        assert.equal(await view.getByLabel('Diffusion model', { exact: true }).inputValue(), 'anima/anima-turbo-v1.0-int8-convrot.safetensors');
+        assert.equal(await view.getByLabel('Diffusion model · global', { exact: true }).inputValue(), 'anima/anima-turbo-v1.0-int8-convrot.safetensors');
         assert.equal(await view.getByLabel('Encoder loading type', { exact: true }).inputValue(), 'stable_diffusion');
         await view.locator('summary').filter({ hasText: /^Sampling$/ }).click();
         assert((await view.getByLabel('Negative prompt', { exact: true }).inputValue()).includes('worst quality'));
@@ -99,10 +99,10 @@ try {
             assert.equal(controlled.find(n => n.class_type === 'AnimaArtistPack').inputs.artist_chain, '@kubo tite');
             await page.waitForTimeout(2200);
         }
-        // SnapRef takes one to three pictures of one character.
+        // SnapRef takes up to eight pictures of one character.
         await view.getByLabel('Engine', { exact: true }).selectOption('anima_snapref');
         await view.getByText('Connected visual references', { exact: true }).waitFor();
-        assert.equal(await view.locator('.amm-run-hint').innerText(), 'Connect one to three references.');
+        assert.equal(await view.locator('.amm-run-hint').innerText(), 'Connect one to eight references.');
         if (space === 'panels') {
             // Images from the computer or ComfyUI's input folder join References and get connected in one step.
             const png = Buffer.from((await page.evaluate(() => { const c = document.createElement('canvas'); c.width = 64; c.height = 96; c.getContext('2d').fillRect(0, 0, 64, 96); return c.toDataURL('image/png'); })).split(',')[1], 'base64');
@@ -125,9 +125,9 @@ try {
             const queuedBefore = queued.length;
             await view.getByRole('button', { name: 'Generate panel', exact: true }).click();
             for (let i = 0; i < 40 && queued.length === queuedBefore; i++) await page.waitForTimeout(100);
-            const graph = queued.at(-1).prompt, snap = Object.values(graph).find(n => n.class_type === 'SnapRef');
+            const graph = queued.at(-1).prompt, snap = Object.values(graph).find(n => n.class_type === 'SnapRefSimple');
             assert(snap, await studio.locator('.amm-error').textContent());
-            assert.deepEqual([graph[snap.inputs.image[0]].inputs.image, graph[snap.inputs.image_2[0]].inputs.image], imported.slice(-2).map(a => `anima-manga-maker/${backend.project}/${a.id}.png`));
+            assert.deepEqual([snap.inputs.reference, snap.inputs.reference_2], imported.slice(-2).map(a => `anima-manga-maker/${backend.project}/${a.id}.png`));
             const latent = Object.values(graph).find(n => n.class_type === 'EmptyLatentImage').inputs;
             assert(Math.abs(latent.width / latent.height - 2 / 3) < 0.02, 'The size is inherited from the uploaded first reference');
             await page.waitForTimeout(700);

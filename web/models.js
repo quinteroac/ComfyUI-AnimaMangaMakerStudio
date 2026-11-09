@@ -12,7 +12,7 @@ const animaModels = { model: 'anima/anima-turbo-v1.0-int8-convrot.safetensors', 
 export const profiles = {
     anima: { name: 'Anima', settings: { ...animaModels, sampler: 'er_sde', scheduler: 'simple' } },
     anima_ref: { name: 'Anima Ref', settings: { ...animaModels, sampler: 'euler', scheduler: 'simple', ref_adapter_lora: 'anima_ref_adapter_v2_r64.safetensors', ref_guidance: 1, pag_scale: 1.3 } },
-    anima_snapref: { name: 'Anima SnapRef', settings: { ...animaModels, sampler: 'euler', scheduler: 'simple', snapref_adapter: 'snapref_v2a_pre2.safetensors', snapref_mode: 'char', snapref_strength: 0, snapref_fidelity: 1 } },
+    anima_snapref: { name: 'Anima SnapRef', settings: { ...animaModels, sampler: 'euler', scheduler: 'simple', snapref_adapter: 'snapref_v2a.safetensors', snapref_mode: 'char', snapref_strength: 0, snapref_fidelity: 1 } },
 };
 
 export function globalModels(settings) {

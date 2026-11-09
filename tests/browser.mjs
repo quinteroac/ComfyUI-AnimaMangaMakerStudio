@@ -102,7 +102,7 @@ try {
     const configure = async () => {
         const view = studio.locator('.amm-workspace:visible');
         await view.locator('summary').filter({ hasText: 'Models and advanced settings' }).click();
-        for (const [label, value] of [['Diffusion model', list('UNETLoader','unet_name')[0]], ['Text encoder', list('CLIPLoader','clip_name')[0]], ['VAE', list('VAELoader','vae_name')[0]]]) await view.getByLabel(label, { exact: true }).fill(value);
+        for (const [label, value] of [['Text encoder', list('CLIPLoader','clip_name')[0]], ['VAE', list('VAELoader','vae_name')[0]]]) await view.getByLabel(label, { exact: true }).fill(value);
     };
     // Sampling is simulated only at the queue boundary; staging and result persistence are real test storage.
     await configure();
@@ -281,6 +281,9 @@ try {
     await page.mouse.move(bubbleCanvas.x + bubbleCanvas.width * .85, bubbleCanvas.y + bubbleCanvas.height * .77); await page.mouse.down();
     await page.mouse.move(bubbleCanvas.x + bubbleCanvas.width * .92, bubbleCanvas.y + bubbleCanvas.height * .84); await page.mouse.up();
     assert(Number(await studio.getByLabel('Bubble width · %', { exact: true }).inputValue()) > 30);
+    const [pageDownload] = await Promise.all([page.waitForEvent('download'), studio.getByRole('button', { name: 'Download page', exact: true }).click()]);
+    assert.equal(pageDownload.suggestedFilename(), 'Page 1.png');
+    assert.deepEqual([...(await fs.readFile(await pageDownload.path())).subarray(1, 4)], [...Buffer.from('PNG')], 'The page downloads as a PNG');
     await studio.getByRole('button', { name: 'Export composition to pages/', exact: true }).click();
     await studio.locator('.amm-toast').filter({ hasText: 'Composition saved' }).waitFor();
     await page.screenshot({ path: `${captures}/editor.png` });
@@ -352,7 +355,7 @@ try {
     await ar.focus(); await ar.press('Enter'); assert.equal(await ar.getAttribute('aria-pressed'), 'true');
     await refView.getByLabel('Resolution · MP', { exact: true }).fill('1.5');
     await refView.locator('summary').filter({ hasText: 'Models and advanced settings' }).click();
-    for (const [label, value] of [['Diffusion model', list('UNETLoader','unet_name')[0]], ['Text encoder', list('CLIPLoader','clip_name')[0]], ['VAE', list('VAELoader','vae_name')[0]]]) await refView.getByLabel(label, { exact: true }).fill(value);
+    for (const [label, value] of [['Text encoder', list('CLIPLoader','clip_name')[0]], ['VAE', list('VAELoader','vae_name')[0]]]) await refView.getByLabel(label, { exact: true }).fill(value);
     await refView.getByRole('button', { name: 'Generate reference', exact: true }).click();
     await page.waitForFunction(() => document.querySelectorAll('.amm-references .amm-asset').length === 2);
     const manual = Object.values(queued[2].prompt).find(n => n.class_type === 'AnimaRefLatent');

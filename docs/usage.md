@@ -12,6 +12,7 @@ Studio is organized around assets and projects: references describe the cast and
 | **Style** | The project's art style, shared by every operation | Danbooru tags, natural-language style and preview generations |
 | **References** | Character, expression, pose, clothing, object and environment references | Engine, prompt, connected references, imported images or **Draw reference** |
 | **Panels** | Illustrations intended for individual manga panels | Engine, prompt, connected references and output size; or imported/drawn art |
+| **Refinement** | Qwen Image instruction edits of any project image, saved as new versions | Original image, instruction and Qwen models |
 | **Page layout** | Arrange panels, framing and dialogue into a page | Layout geometry, panel images, reading order, borders and text |
 
 The ComfyUI graph remains available outside Studio. Generation runs through the existing queue, while importing, drawing and layout editing do not need a diffusion model.
@@ -22,7 +23,7 @@ Select the engine under **Engine** in References and Panels:
 
 - **Anima** generates from text. Reuse a saved reference prompt through **Use image prompt** in its image menu.
 - **Anima Ref** takes character and style from one to four connected references and the scene from the prompt. The references are placed side by side as one reference image, so describe the scene, pose and framing rather than the character. **Use with Anima Ref** in an image menu switches to this engine with that image connected.
-- **Anima SnapRef** takes one to three pictures of the same character. In **Character** mode the style comes from the model and prompt, which keeps a manga style; **Character & style** also takes the art style from the pictures.
+- **Anima SnapRef** takes up to eight pictures of the same character, or up to three different characters side by side with **Different characters**. In **Character** mode the style comes from the model and prompt, which keeps a manga style; **Character & style** also takes the art style from the pictures.
 
 All three share prompts, presets, AR/MP, seed, sampling overrides, additional LoRAs, [LLLite controls](configuration.md#controls--lllite) and the [Artist Mixer](configuration.md#artist-mixer). See [Configuration](configuration.md) for models and defaults.
 
@@ -43,6 +44,10 @@ Hover an image to show its checkbox; selecting images shows a bar with **Clear s
 ## Upscale
 
 **Upscale**, in an image's menu, saves a larger version of a reference, panel or page. Anima redraws the image at **Target resolution · MP** (2 by default) from the image itself. With a Tile & Repair LLLite installed (LAXMAYDAY, v2 or v1), it holds the color image and starts at **Denoise** 0.5: lines sharpen and colors stay. Without one, the any-test LLLite holds the grayscale at 0.3, and colors the prompt does not name can drift, so name them (eyes, hair, clothes) or use **Create prompt from image** first. The image's own prompt is filled in when it has one.
+
+## Refinement
+
+**Refinement** edits a reference, panel or page with a Qwen Image 2.1 instruction (`<image1>` is the original), for example removing text or an object, or cleaning lines. Open it from **Refine with Qwen** in an image's menu or pick the **Original image**; the result is saved as a new version and shown next to the original. With a page as the original, the gallery below lists the exported pages, and **Download image** in their menu downloads them; **Download page** in Page layout downloads the current page directly. The drawing editor has the same edit as the **Edit · Qwen** workflow for a canvas or region. Requires the Qwen Image 2.1 model, its Qwen3-VL text encoder and VAE.
 
 ## Connected references
 

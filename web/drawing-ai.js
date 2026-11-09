@@ -207,7 +207,7 @@ export function sketchControls(studio, kind, project, send, busyChanged, scene) 
         if (active) { pending = true; return; }
         const lineart = mode === 'redraw' && redraw.cfg.task === 'lineart';
         stopping = false; pending = false; active = { token: uuid(), revision, mode, name: lineart ? 'Lineart' : title(), operation: lineart ? 'lineart' : mode, ink: lineart,
-            engine: { sketch: cfg.engine, inpaint: 'anima', redraw: 'anima', edit: 'qwen_edit', manga: 'manga_lite', bbox: bbox.cfg.engine }[mode],
+            engine: { sketch: cfg.engine, inpaint: inpaint.cfg.engine, redraw: 'anima', edit: 'qwen_edit', manga: 'manga_lite', bbox: bbox.cfg.engine }[mode],
             settings: structuredClone({ sketch: studio.styled(cfg), inpaint: studio.styled(inpaint.cfg), redraw: studio.styled(redraw.cfg), edit: edit.cfg, manga: { ...manga.cfg, feather: 0, blend_opacity: 100 }, bbox: studio.styled({ ...bbox.cfg, boxes: bbox.boxes, feather: 0, blend_opacity: 100 }) }[mode]) };
         status.textContent = 'Capturing drawing…'; update(); send('manga-drawing-snapshot', { token: active.token });
     }
@@ -299,7 +299,9 @@ export function sketchControls(studio, kind, project, send, busyChanged, scene) 
                 const imagePath = `${uploaded.subfolder ? uploaded.subfolder + '/' : ''}${uploaded.name} [${uploaded.type}]`;
                 if (ticket.mode === 'inpaint') {
                     const inpaint = { image_path: imagePath, mask_path: await upload(ticket.modelMask, project, `${ticket.token}-mask`), patch: settings.inpaint_patch, strength: settings.inpaint_strength };
-                    built = buildPrompt(studio.defs, 'inpaint', ticket.engine, { ...settings, aspect_ratio: `${r.width}:${r.height}`, inpaint }, [], ticket.token);
+                    // SnapRef inpainting draws the masked figure as the character in its references.
+                    const references = ticket.engine === 'anima_snapref' && settings.references.length ? await request(`/projects/${project}/stage`, { assets: settings.references }, 'POST') : [];
+                    built = buildPrompt(studio.defs, 'inpaint', ticket.engine, { ...settings, aspect_ratio: `${r.width}:${r.height}`, inpaint }, references, ticket.token);
                 } else if (ticket.ink) built = buildLineartPrompt(studio.defs, imagePath, Math.max(512, Math.round(Math.min(r.width, r.height) / 64) * 64));
                 else if (ticket.mode === 'redraw') {
                     const source = { source_path: imagePath, mode: settings.redraw_mode, patch: settings.redraw_patch, strength: settings.redraw_strength, end: settings.redraw_end };

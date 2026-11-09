@@ -21,7 +21,7 @@ An agent can also apply and verify these settings using the included [anima-mang
 | --- | --- | --- |
 | **Anima** | Text to image: `CLIPTextEncode` positive and negative, `EmptyLatentImage`, `KSampler` | Anima Turbo, 8 steps, CFG 1, ER SDE, Simple |
 | **Anima Ref** | Follows the CharRef workflows: references stitched side by side into one image, `AnimaRefAdapterLoader` (v2 r64), `AnimaRefLatent`, `AnimaRefGuider` and optional Safe PAG | Anima Turbo, 8 steps, CFG 1, Euler, Simple, reference guidance 1, PAG 1.3 |
-| **Anima SnapRef** | One to three pictures of one character on the `SnapRef` node, then `KSampler`. **Character** keeps the style from the model and prompt; **Character & style** also takes the art style | Anima Turbo, 8 steps, CFG 1, Euler, Simple, `snapref_v2a_pre2`, Character, attention 0, fidelity 1 |
+| **Anima SnapRef** | Up to eight pictures of one character on the `SnapRefSimple` node, or up to three different characters stitched on `SnapRef`, then `KSampler`. **Character** keeps the style from the model and prompt; **Character & style** also takes the art style | Anima Turbo, 8 steps, CFG 1, Euler, Simple, `snapref_v2a`, Character, attention 0, fidelity 1 |
 
 All three use `qwen_3_06b_base.safetensors` with loading type `stable_diffusion` and `qwen_image_vae.safetensors`. These defaults are written in `web/models.js`; **Reset engine options and sampling** restores the engine defaults while keeping the selected global diffusion model. A different Anima checkpoint, such as Anima Base or a manga finetune, usually needs more steps and a higher CFG; set them together with the model.
 

@@ -12,8 +12,11 @@ import { openStylePicker } from './style-picker.js';
 import { sceneEditor, renderScene, sceneMap } from './scene-editor.js';
 import { upload } from './control-layers.js';
 import { tagSliderControls } from './tag-sliders.js';
+import { editControls } from './edit-panel.js';
+import { buildQwenEditPrompt } from './qwen-prompt.js';
 
-const spaces = { story: 'Story', style: 'Style', references: 'References', panels: 'Panels', design: 'Page layout' };
+const spaces = { story: 'Story', style: 'Style', references: 'References', panels: 'Panels', refine: 'Refinement', design: 'Page layout' };
+const kindNames = { references: 'References', panels: 'Panels', pages: 'Pages' };
 const engines = { anima: 'Anima', anima_ref: 'Anima Ref', anima_snapref: 'Anima SnapRef' };
 const textTasks = { enhance: 'Enhance section', describe: 'Create reference prompt' };
 const clone = x => structuredClone(x);
@@ -140,6 +143,7 @@ export class Studio {
             if (this.active === 'design') this.design(view);
             else if (this.active === 'story') this.storyView = new StoryStudio(this, view);
             else if (this.active === 'style') this.styleView(view);
+            else if (this.active === 'refine') this.refine(view);
             else this.generateView(view, this.active);
         } else if (this.active === 'story') this.storyView.render();
         view.hidden = false;
@@ -595,10 +599,10 @@ export class Studio {
         }, ref => cfg.references.length >= limit && !cfg.references.includes(ref)), {}, true));
         box.append(el('small', { text: cfg.engine === 'anima_ref'
             ? 'Anima Ref: connect one to four references; they are placed side by side as one reference. Character and style come from them, so describe only the scene, pose and framing in the prompt.'
-            : 'SnapRef: connect one to three pictures. Character mode keeps the style from the model and prompt; Character & style also takes the art style.' }));
+            : 'SnapRef: connect up to eight pictures of one character, or up to three different characters. Character mode keeps the style from the model and prompt; Character & style also takes the art style.' }));
         if (cfg.engine === 'anima_snapref') box.append(segmented('SnapRef references', [['separate', 'Same character'], ['stitch', 'Different characters']], cfg.snapref_layout || 'separate',
             value => { cfg.snapref_layout = value; this.presetChanged(space); }),
-            el('small', { text: 'Same character merges the pictures into one identity. Different characters places them side by side, left to right in reference order; say who is on the left and who is on the right in the prompt.' }));
+            el('small', { text: 'Same character merges the pictures into one identity. Different characters places them side by side, as Anima Ref does, left to right in reference order; say who is on the left and who is on the right in the prompt. For a character that still blends, mask it in the drawing editor and use Inpaint with SnapRef.' }));
         slot.append(box);
     }
     // Picks a project image, or imports one from ComfyUI's input folder or the computer into References and picks it in the same step.
@@ -708,7 +712,7 @@ export class Studio {
                 actions.append(this.downloadImageAction(a));
                 addAction('Rename', 'pencil', () => this.ask('Image name', a.name, async name => { await this.patchAssets({ [a.id]: { name } }); render(); }));
                 addAction('Settings', 'info', () => this.assetSettings(a));
-                if (space !== 'design') actions.append(this.referencePromptAction(a, space));
+                if (!['design', 'refine'].includes(space)) actions.append(this.referencePromptAction(a, space));
                 if (a.kind === 'references') actions.append(this.describeReferenceAction(a, space));
                 if (!a.deleted) {
                     if (['references', 'panels'].includes(a.kind)) addAction('Draw with Klecks', 'pencil', () => openDrawing(this, a.kind, a));
@@ -717,7 +721,9 @@ export class Studio {
                         this.state(a.kind).engine = 'anima_ref'; this.config(a.kind, 'anima_ref').references = [a.id];
                         this.rebuild(a.kind); this.switch(a.kind); this.saveSoon();
                     });
-                    if (space === 'design') addAction('Place', 'place', () => { if (!this.editor?.panel) this.editor.addPanel(); this.editor.change(() => this.editor.panel.asset = a.id); this.editor.loadImages(); });
+                    if (space !== 'refine') addAction('Refine with Qwen', 'wand', () => { this.state('refine').source = a.id; this.saveSoon(); this.rebuild('refine'); this.switch('refine'); });
+                    if (space === 'refine') addAction('Use as original', 'image', () => { this.state('refine').source = a.id; this.saveSoon(); this.rebuild('refine'); });
+                    else if (space === 'design') addAction('Place', 'place', () => { if (!this.editor?.panel) this.editor.addPanel(); this.editor.change(() => this.editor.panel.asset = a.id); this.editor.loadImages(); });
                     else addAction('Use as reference', 'link', () => {
                         const cfg = this.config(space);
                         if (!cfg.references.includes(a.id)) {
@@ -825,6 +831,7 @@ export class Studio {
             iconButton('Delete layout', 'trash', () => this.confirm('Delete page layout', () => { const removed = state.pages.find(p => p.id === state.currentPage); (state.deletedPages ||= []).push(removed); state.pages = state.pages.filter(p => p.id !== state.currentPage); if (!state.pages.length) state.pages.push(newPage()); state.currentPage = state.pages[0].id; update(); pageSelect.onchange({ target: pageSelect }); })),
             iconButton('Restore deleted layout', 'restore', () => { const page = state.deletedPages?.pop(); if (page) { state.pages.push(page); state.currentPage = page.id; update(); pageSelect.onchange({ target: pageSelect }); } }));
         files.append(iconButton('Save layout preset', 'save', () => this.ask('Layout name', this.editor.page.name, name => { this.project.layouts[name] = clone(this.editor.page); this.saveSoon(); fillPresets(); })),
+            iconButton('Download page', 'image', () => this.action(async () => download(`${this.editor.page.name}.png`, await this.editor.export()))),
             iconButton('Export layout', 'download', () => download('manga-layout.json', this.editor.page)), iconButton('Import layout', 'upload', () => chooseFile('.json', files => this.action(async () => {
                 const layout = JSON.parse(await files[0].text()); this.validateLayout(layout);
                 this.confirm('Replace the geometry of this page', () => { this.editor.change(() => { Object.assign(this.editor.page, normalizePage(layout), { id: this.editor.page.id }); }); this.editor.loadImages(); this.editor.fit(); });
@@ -937,6 +944,49 @@ export class Studio {
         this.promptControls(content, cfg, changed); this.samplingControls(content, cfg, 'anima', changed, 'upscale'); this.modelControls(content, cfg, 'anima', changed, false, 'upscale', () => {});
         const dialog = this.modal(`Upscale · ${asset.name}`, content, button('Upscale', () => this.action(async () => { await this.upscale(asset, cfg); dialog.close(); }), { class: 'amm-primary' }));
     }
+    // Qwen Image instruction editing of any project image, pages included; the result is a new version of the original.
+    refine(view) {
+        const space = 'refine', state = this.state(space), source = this.project.assets.find(a => a.id === state.source && !a.deleted);
+        const controls = el('aside', { class: 'amm-controls' }), preview = el('section', { class: 'amm-preview-area' });
+        const select = el('select', { 'aria-label': 'Original image', onchange: e => { state.source = e.target.value; this.saveSoon(); this.rebuild(space); } }, el('option', { value: '', text: 'Select original…' }),
+            ...this.project.assets.filter(a => !a.deleted && !a.missing).map(a => el('option', { value: a.id, text: `${kindNames[a.kind]} · ${a.name} · v${a.version}` })));
+        select.value = source?.id || '';
+        const edit = editControls(this, 'refine', () => this.saveSoon(), false);
+        controls.append(el('h2', { text: 'Refinement · Qwen' }), el('small', { text: 'Edit a reference, panel or page with a Qwen Image instruction. The result is saved as a new version of the original.' }),
+            field('Original image', select), edit.element, el('div', { class: 'amm-run-bar' }, button('Refine image', () => this.action(() => this.refineImage(source, edit.cfg)), { class: 'amm-primary', disabled: !source })));
+        view.append(controls, preview); this.controlLayout(view, controls, space); this.comparison(preview);
+        const gallery = el('div', { class: 'amm-result-gallery' }); preview.append(gallery);
+        this.gallery(gallery, source?.kind || 'panels', space, true);
+    }
+    // The original next to its latest refinement.
+    comparison(host) {
+        host.querySelector('.amm-comparison')?.remove();
+        const source = this.project.assets.find(a => a.id === this.state('refine').source && !a.deleted);
+        const result = source && this.project.assets.filter(a => a.parent === source.id && a.metadata?.operation === 'refine' && !a.deleted).sort((a, b) => b.created - a.created)[0];
+        const shell = el('div', { class: 'amm-comparison' });
+        if (!source) shell.append(el('div', { class: 'amm-empty', text: 'Select an original image from your project, or choose Refine with Qwen in an image menu.' }));
+        else {
+            const images = el('div', { class: 'amm-compare-images' }, el('figure', {}, el('figcaption', { text: 'Original' }), el('img', { src: assetUrl(this.project.id, source.id), alt: source.name })));
+            if (result) images.append(el('figure', {}, el('figcaption', { text: 'Result' }), el('img', { src: assetUrl(this.project.id, result.id), alt: result.name })));
+            shell.append(images);
+            if (result) {
+                const range = el('input', { type: 'range', min: 0, max: 100, value: 50, 'aria-label': 'Before and after comparison', oninput: e => sliding.style.setProperty('--amm-split', `${e.target.value}%`) });
+                const sliding = el('div', { class: 'amm-sliding', hidden: true }, el('img', { src: assetUrl(this.project.id, source.id), alt: 'Before' }),
+                    el('img', { src: assetUrl(this.project.id, result.id), alt: 'After', class: 'amm-compare-overlay' }), range);
+                shell.prepend(segmented('Comparison view', [['split', 'Side by side'], ['slider', 'Before / after slider']], 'split', value => { sliding.hidden = value !== 'slider'; images.hidden = !sliding.hidden; }), sliding);
+            }
+        }
+        host.prepend(shell);
+    }
+    async refineImage(asset, cfg) {
+        const project = this.project, jobId = uuid(), settings = clone(cfg);
+        if (settings.random_seed) settings.seed = Math.floor(Math.random() * 2 ** 48);
+        const [path] = await request(`/projects/${project.id}/stage`, { assets: [asset.id] }, 'POST');
+        const built = buildQwenEditPrompt(this.defs, settings, path);
+        await this.queue(project, { id: jobId, operation: 'refine', engine: 'qwen_edit', kind: asset.kind, space: 'refine', settings, prompt: built.graph, output_node: built.outputNode,
+            parent: asset.id, sources: [asset.id], name: `Refine · ${asset.name}` }, built);
+        this.notify(`Refinement queued · ${asset.name}`);
+    }
     async upscale(asset, cfg) {
         const project = this.project, jobId = uuid(), settings = clone(this.styled(cfg));
         if (settings.random_seed) settings.seed = Math.floor(Math.random() * 2 ** 48);
@@ -1004,6 +1054,7 @@ export class Studio {
             }
             project.jobs = data.jobs; project.assets = data.assets;
             if (added) {
+                const refine = this.views.get('refine')?.querySelector('.amm-preview-area'); if (refine) this.comparison(refine);
                 this.referenceRefresh.forEach(refresh => refresh());
                 this.galleryRefresh.forEach(refresh => refresh());
             }
@@ -1041,7 +1092,7 @@ export class Studio {
         for (const b of this.dialog.querySelectorAll('[data-run]')) {
             const run = b.dataset.run, limit = ['references', 'panels'].includes(run) && referenceLimits[this.state(run).engine], references = limit ? this.config(run).references.length : null;
             const reason = this.busy.has(`${this.project.id}:${run}`) ? 'Submitting…'
-                : references !== null && (references < 1 || references > limit) ? `Connect one to ${limit === 4 ? 'four' : 'three'} references.`
+                : references !== null && (references < 1 || references > limit) ? `Connect one to ${limit === 4 ? 'four' : 'eight'} references.`
                 : run in textTasks && !this.textGeneratorAvailable() ? 'Configure the global text generator in Settings.'
                 : run in textTasks && this.project.jobs.some(j => j.operation === run && ['registered', 'queued', 'running'].includes(j.state)) ? 'A text generation is already running.'
                 : run === 'describe' && !this.project.assets.some(a => a.id === b.dataset.textSource && !a.deleted && !a.missing) ? 'The source image is unavailable.' : '';
