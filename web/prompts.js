@@ -97,7 +97,7 @@ export function options(defs, node, field) {
     return Array.isArray(spec?.[0]) ? spec[0] : spec?.[1]?.options || [];
 }
 
-// Reference engines and how many pictures each takes: Anima Ref stitches up to four, SnapRef takes up to three of one character.
+// Reference engines and how many pictures each takes: Anima Ref stitches up to four, SnapRef takes up to three.
 export const referenceLimits = { anima_ref: 4, anima_snapref: 3 };
 
 // Starting values per LLLite type, from the November 2026 benchmark on Anima Turbo and mangaVision (VALIDATION.md).
@@ -263,11 +263,11 @@ export function buildPrompt(defs, operation, engine, config, imagePaths, jobId) 
         model = add(loader, { model, lora_name: check(loader, 'lora_name', config.ref_adapter_lora, 'Ref Adapter LoRA'), strength: 1, ref_offset_h: 1 });
     }
     if (engine === 'anima_snapref') {
-        // SnapRef's extra pictures are more views of the same character.
+        // SnapRef merges separate pictures into one character; different characters go side by side in one stitched reference.
         model = add('SnapRef', { model, clip, vae, ...Object.fromEntries(images.map((image, i) => [['image', 'image_2', 'image_3'][i], image])),
             adapter: check('SnapRef', 'adapter', config.snapref_adapter, 'SnapRef adapter'), mode: config.snapref_mode, ref_in_uncond: false, ref_megapixels: 1,
             strength: Number(config.snapref_strength), ref_caption: '', ref_guidance_on: false, ref_guidance: 4.5, correction: 'apg', ref_end: 1,
-            use_batch: false, multi_layout: 'separate', weight_1: 1, weight_2: 1, weight_3: 1, fidelity: Number(config.snapref_fidelity) });
+            use_batch: false, multi_layout: config.snapref_layout === 'stitch' ? 'stitch' : 'separate', weight_1: 1, weight_2: 1, weight_3: 1, fidelity: Number(config.snapref_fidelity) });
     }
     if (limit) model = add('ModelComputeDtype', { model, dtype: 'bf16' });
     const attention = config.attention || defaultAttention(defs, engine);

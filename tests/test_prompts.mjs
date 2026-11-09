@@ -77,6 +77,8 @@ for (const images of [['a.png'], ['a.png', 'b.png', 'c.png']]) {
     const [id, node] = Object.entries(graph).find(([, n]) => n.class_type === 'SnapRef');
     assert.deepEqual(['image', 'image_2', 'image_3'].filter(key => node.inputs[key]).map(key => graph[node.inputs[key][0]].inputs.image), images);
     assert.equal(node.inputs.mode, 'cs'); assert.equal(node.inputs.strength, .5); assert.equal(node.inputs.fidelity, .8);
+    assert.equal(node.inputs.multi_layout, 'separate');
+    assert.equal(buildPrompt(defs, 'panels', 'anima_snapref', { ...snapref, snapref_layout: 'stitch' }, images, 'snapref').graph[id].inputs.multi_layout, 'stitch');
     const sampler = Object.values(graph).find(n => n.class_type === 'KSampler');
     assert.equal(sampler.inputs.sampler_name, 'euler');
     let model = sampler.inputs.model; while (model[0] !== id) model = graph[model[0]].inputs.model;

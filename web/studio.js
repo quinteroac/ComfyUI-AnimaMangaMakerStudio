@@ -595,7 +595,10 @@ export class Studio {
         }, ref => cfg.references.length >= limit && !cfg.references.includes(ref)), {}, true));
         box.append(el('small', { text: cfg.engine === 'anima_ref'
             ? 'Anima Ref: connect one to four references; they are placed side by side as one reference. Character and style come from them, so describe only the scene, pose and framing in the prompt.'
-            : 'SnapRef: connect one to three pictures of the same character. Character mode keeps the style from the model and prompt; Character & style also takes the art style.' }));
+            : 'SnapRef: connect one to three pictures. Character mode keeps the style from the model and prompt; Character & style also takes the art style.' }));
+        if (cfg.engine === 'anima_snapref') box.append(segmented('SnapRef references', [['separate', 'Same character'], ['stitch', 'Different characters']], cfg.snapref_layout || 'separate',
+            value => { cfg.snapref_layout = value; this.presetChanged(space); }),
+            el('small', { text: 'Same character merges the pictures into one identity. Different characters places them side by side, left to right in reference order; say who is on the left and who is on the right in the prompt.' }));
         slot.append(box);
     }
     // Picks a project image, or imports one from ComfyUI's input folder or the computer into References and picks it in the same step.
