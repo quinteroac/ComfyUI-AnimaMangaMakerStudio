@@ -944,15 +944,16 @@ export class Studio {
     refine(view) {
         const space = 'refine', state = this.state(space), source = this.project.assets.find(a => a.id === state.source);
         const controls = el('aside', { class: 'amm-controls' }), preview = el('section', { class: 'amm-preview-area' });
-        const select = el('select', { 'aria-label': 'Original image', onchange: e => { state.source = e.target.value; this.saveSoon(); this.rebuild(space); } }, el('option', { value: '', text: 'Select original…' }),
+        const select = el('select', { 'aria-label': 'Original image', onchange: e => { state.source = e.target.value; state.kind = null; this.saveSoon(); this.rebuild(space); } }, el('option', { value: '', text: 'Select original…' }),
             ...this.project.assets.filter(a => !a.missing).map(a => el('option', { value: a.id, text: `${kindNames[a.kind]} · ${a.name} · v${a.version}` })));
         select.value = source?.id || '';
         const edit = editControls(this, 'refine', () => this.saveSoon(), false);
         controls.append(el('h2', { text: 'Refinement · Qwen' }), el('small', { text: 'Edit a reference, panel or page with a Qwen Image instruction. The result is saved as a new version of the original.' }),
             field('Original image', select), edit.element, el('div', { class: 'amm-run-bar' }, button('Refine image', () => this.action(() => this.refineImage(source, edit.cfg)), { class: 'amm-primary', disabled: !source })));
         view.append(controls, preview); this.controlLayout(view, controls, space); this.comparison(preview);
-        const gallery = el('div', { class: 'amm-result-gallery' }); preview.append(gallery);
-        this.gallery(gallery, source?.kind || 'panels', space, true);
+        const gallery = el('div', { class: 'amm-result-gallery' }), kind = state.kind || source?.kind || 'panels';
+        preview.append(segmented('Gallery', Object.entries(kindNames), kind, value => { state.kind = value; this.saveSoon(); this.rebuild(space); }), gallery);
+        this.gallery(gallery, kind, space, true);
     }
     // The original next to its latest refinement.
     comparison(host) {
