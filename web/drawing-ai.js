@@ -1,6 +1,6 @@
 import { api } from '../../scripts/api.js';
 import { el, button, field, request, uuid } from './client.js';
-import { alphaMethods, buildPrompt, buildLineartPrompt } from './prompts.js';
+import { alphaMethods, buildPrompt, buildLineartPrompt, controlTypes, redrawModes } from './prompts.js';
 import { boxGroups } from './size.js';
 import { mangaControls } from './manga-panel.js';
 import { segmented, slider, toggle, seed } from './controls.js';
@@ -8,18 +8,20 @@ import { buildMangaPrompt } from './manga-prompt.js';
 import { bboxControls } from './bbox-panel.js';
 import { controlLayers, maskLayer, upload } from './control-layers.js';
 import { inpaintControls } from './inpaint-panel.js';
-import { redrawControls } from './redraw-panel.js';
+import { redrawControls, modePatch } from './redraw-panel.js';
 import { editControls } from './edit-panel.js';
 import { buildQwenEditPrompt } from './qwen-prompt.js';
 
 export function sketchControls(studio, kind, project, send, busyChanged, scene) {
     const scope = `sketch_${kind}`, sketchState = studio.state(scope);
-    // Sketch to Art runs the Anima Ref Adapter with the drawing as its reference.
+    // Sketch to Art runs the Anima Ref Adapter with the drawing as its reference, which also copies the drawing's look,
+    // or plain Anima with the drawing only as an LLLite control, so the look comes from the prompt and the project style.
     const sketchConfig = engine => {
         const existing = studio.project.config[`${scope}:${engine}`];
         const cfg = studio.config(scope, engine); cfg.engine = engine;
         if (existing) return cfg;
         Object.assign(cfg, { denoise: 0.6, seed: 0, random_seed: false, region_mode: 'canvas', feather: 16, blend_opacity: 100 });
+        if (engine === 'anima') Object.assign(cfg, { denoise: 1, redraw_mode: 'any', redraw_patch: modePatch(studio.defs, 'any'), redraw_strength: controlTypes.anytest.strength, redraw_end: 1 });
         const sourcePrompt = studio.config(kind);
         cfg.prompt = sourcePrompt.prompt || '';
         cfg.prompt_sections = structuredClone(sourcePrompt.prompt_sections || {});
@@ -28,8 +30,7 @@ export function sketchControls(studio, kind, project, send, busyChanged, scene) 
         studio.saveSoon();
         return cfg;
     };
-    sketchState.engine = 'anima_ref';
-    let cfg = sketchConfig('anima_ref');
+    let cfg = sketchConfig(sketchState.engine === 'anima_ref' ? 'anima_ref' : 'anima');
     let ready = false, disposed = false, revision = 0, active = null, job = null, pending = false, stopping = false, polling = false;
     let wakePoll, completionNotified = false;
     const abort = new AbortController();
@@ -81,9 +82,23 @@ export function sketchControls(studio, kind, project, send, busyChanged, scene) 
     const transparency = el('div');
     const sampling = el('div');
     const models = el('div');
+    const engine = el('div'), hold = el('div');
     const renderModels = () => { models.replaceChildren(); studio.modelControls(models, cfg, cfg.engine, changed, false, 'sketch', renderModels); };
     function renderSettings() {
         presets.replaceChildren(); studio.presets(presets, scope, cfg, {}, () => { revision++; renderSettings(); paintPreview(); });
+        engine.replaceChildren(segmented('Sketch engine', [['anima_ref', 'Anima Ref · copies the drawing'], ['anima', 'Anima · project style']], cfg.engine, value => {
+            sketchState.engine = value; cfg = sketchConfig(value); changed(); renderSettings();
+        }));
+        hold.replaceChildren();
+        if (cfg.engine === 'anima') {
+            const mode = el('select', { 'aria-label': 'Keep from the drawing', onchange: e => {
+                cfg.redraw_mode = e.target.value; cfg.redraw_patch = modePatch(studio.defs, cfg.redraw_mode);
+                cfg.redraw_strength = controlTypes[redrawModes[cfg.redraw_mode].type]?.strength ?? 1; changed(); renderSettings();
+            } }, ...Object.entries(redrawModes).map(([value, item]) => el('option', { value, text: item.label })));
+            mode.value = cfg.redraw_mode;
+            hold.append(field('Keep from the drawing', mode), slider('Fidelity · LLLite strength',
+                el('input', { type: 'number', 'aria-label': 'Fidelity · LLLite strength', value: cfg.redraw_strength, step: 0.05, onchange: e => { cfg.redraw_strength = Number(e.target.value); changed(); } }), [0, 2]));
+        }
         regionMode.value = cfg.region_mode || 'canvas';
         if (regionMode.value === 'canvas') resetMaskMode();
         for (const key of Object.keys(inputs)) inputs[key].value = cfg.region?.[key] ?? 0;
@@ -122,7 +137,7 @@ export function sketchControls(studio, kind, project, send, busyChanged, scene) 
         regionControls.hidden = ['bbox', 'inpaint'].includes(mode); layers.element.hidden = ['manga', 'edit'].includes(mode); paintPreview(); if (mode === 'bbox') bbox.sync();
         status.textContent = hints[mode];
     });
-    const sketchSettings = el('div', {}, presets, blend, prompt, transparency, sampling, models, toggle('Realtime on stroke release', realtime));
+    const sketchSettings = el('div', {}, engine, hold, presets, blend, prompt, transparency, sampling, models, toggle('Realtime on stroke release', realtime));
     const workflowSettings = el('div', {}, sketchSettings);
     const regionControls = el('div', {}, regionMode, el('small', { id: 'amm-sketch-region-help', text: 'Drag with the left mouse button on the preview to select the generation region. Choose Whole canvas to reset.' }), canvas, coordinates, preview, maskControls);
     const element = el('aside', { class: 'amm-sketch-controls', 'aria-label': 'Sketch to Art controls' }, tool, heading,
@@ -306,6 +321,9 @@ export function sketchControls(studio, kind, project, send, busyChanged, scene) 
                 else if (ticket.mode === 'redraw') {
                     const source = { source_path: imagePath, mode: settings.redraw_mode, patch: settings.redraw_patch, strength: settings.redraw_strength, end: settings.redraw_end };
                     built = buildPrompt(studio.defs, 'redraw', ticket.engine, { ...settings, aspect_ratio: `${r.width}:${r.height}`, redraw: source }, [], ticket.token);
+                } else if (ticket.mode === 'sketch' && ticket.engine === 'anima') {
+                    const source = { source_path: imagePath, mode: settings.redraw_mode, patch: settings.redraw_patch, strength: settings.redraw_strength, end: settings.redraw_end };
+                    built = buildPrompt(studio.defs, 'redraw', 'anima', { ...settings, aspect_ratio: `${r.width}:${r.height}`, redraw: source }, [], ticket.token);
                 } else if (ticket.mode === 'edit') built = buildQwenEditPrompt(studio.defs, settings, imagePath);
                 else built = ticket.mode === 'manga' ? buildMangaPrompt(studio.defs, settings, imagePath) : buildPrompt(studio.defs, 'sketch', ticket.engine, { ...settings, aspect_ratio: `${r.width}:${r.height}` }, [imagePath], ticket.token);
             }
